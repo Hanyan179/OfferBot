@@ -433,14 +433,18 @@ async def page_overview(request: Request):
 
 
 def _render_md(text: str) -> str:
-    """将 Markdown 文本渲染为 HTML（链接可点击、列表等格式化）。"""
+    """将 Markdown 文本渲染为 HTML（链接可点击、在新标签页打开）。"""
+    import re as _re
     try:
         import markdown
-        return markdown.markdown(text, extensions=["tables", "fenced_code"])
+        # 先把裸 URL 转成 Markdown 链接格式，再渲染
+        text = _re.sub(r'(?<!\[)(?<!\()(https?://\S+)', r'[\1](\1)', text)
+        html = markdown.markdown(text, extensions=["tables", "fenced_code"])
+        # 给所有 <a> 标签加 target="_blank"
+        html = html.replace("<a ", '<a target="_blank" rel="noopener" ')
+        return html
     except ImportError:
-        # fallback: 至少把 URL 变成可点击链接
-        import re as _re
-        return _re.sub(r'(https?://\S+)', r'<a href="\1" target="_blank">\1</a>', text.replace("\n", "<br>"))
+        return _re.sub(r'(https?://\S+)', r'<a href="\1" target="_blank" rel="noopener">\1</a>', text.replace("\n", "<br>"))
 
 
 def _parse_memory_files(memory_dir: Path) -> list[dict]:

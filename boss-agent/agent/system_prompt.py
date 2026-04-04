@@ -78,7 +78,7 @@ MEMORY_PROMPT_SECTION = """\
 
 - `get_memory(category)` — 读取指定分类的记忆
 - `search_memory(keyword)` — 在所有分类中按关键词搜索记忆
-- `get_user_cognitive_model()` — 获取完整用户画像摘要
+- `get_user_cognitive_model()` — 获取用户画像摘要（分类+标题列表），不含正文
 - `list_memory_categories()` — 列出所有分类及条目数量
 - `save_memory(category, title, content)` — 保存记忆条目（用户明确要求时使用）
 - `update_memory(category, title, new_content)` — 更新已有记忆条目（用户明确要求时使用）
@@ -99,8 +99,12 @@ MEMORY_PROMPT_SECTION = """\
 
 ### 生成类任务指引
 
-执行生成简历、打招呼语、面试准备等任务前，先调用 `get_user_cognitive_model` 获取完整用户画像，
-结合记忆数据生成更贴合用户真实情况的内容。如果只需要特定维度的信息，用 `get_memory` 按分类读取。
+执行生成简历、打招呼语、面试准备等任务前：
+1. 先调用 `get_user_cognitive_model()` 获取摘要概览（只有分类名和标题列表，不含正文）
+2. 根据任务需要，调用 `get_memory(category)` 获取相关分类的详细内容
+3. 不要一次性获取所有分类的详情，只取你真正需要的
+
+例如：生成打招呼语时，可能只需要 `career_planning` 和 `key_points` 两个分类的详情，而不需要全部 10 个分类。
 
 ### Skills 集成
 

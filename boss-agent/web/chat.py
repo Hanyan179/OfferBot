@@ -146,7 +146,7 @@ async def on_chat_start():
     try:
         cognitive_tool = GetUserCognitiveModelTool()
         result = await cognitive_tool.execute({}, {})
-        memory_summary = result.get("cognitive_model", "")
+        memory_summary = result.get("summary", "")
     except Exception as e:
         logger.warning("加载记忆画像失败: %s", e)
 
@@ -346,7 +346,7 @@ async def handle_user_message(content: str):
     assistant_text = ""
     db = cl.user_session.get("db")
 
-    async for event in executor.chat(messages=history, context={"db": db}, system_prompt=system_prompt):
+    async for event in executor.chat(messages=history, context={"db": db, "llm_client": executor._llm}, system_prompt=system_prompt):
         if event.type == "thinking":
             # 思考过程 — 折叠展示
             thinking_text = event.data.get("content", "")

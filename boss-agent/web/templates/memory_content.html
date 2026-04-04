@@ -6,13 +6,36 @@
 <!-- ===== 简历概要 ===== -->
 <div class="card">
   <h2 class="category-title">📄 简历信息</h2>
+
+  <!-- 基本信息 -->
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:14px;margin-bottom:16px;">
     <div><span style="color:#86868b;">姓名：</span>{{ resume.name or '未填写' }}</div>
     <div><span style="color:#86868b;">城市：</span>{{ resume.city or '未填写' }}</div>
     <div><span style="color:#86868b;">经验：</span>{{ resume.experience or '未填写' }}</div>
     <div><span style="color:#86868b;">学历：</span>{{ resume.education or '未填写' }}</div>
+    {% if resume.school %}<div><span style="color:#86868b;">学校：</span>{{ resume.school }}</div>{% endif %}
+    {% if resume.major %}<div><span style="color:#86868b;">专业：</span>{{ resume.major }}</div>{% endif %}
+    {% if resume.current_company %}<div><span style="color:#86868b;">当前公司：</span>{{ resume.current_company }}</div>{% endif %}
+    {% if resume.current_role %}<div><span style="color:#86868b;">当前职位：</span>{{ resume.current_role }}</div>{% endif %}
   </div>
 
+  <!-- 个人简介 -->
+  {% if resume.summary %}
+  <div style="margin-bottom:16px;">
+    <h3 style="font-size:13px;font-weight:600;color:#86868b;margin-bottom:8px;">个人简介</h3>
+    <p style="font-size:13px;line-height:1.6;color:#444;">{{ resume.summary }}</p>
+  </div>
+  {% endif %}
+
+  <!-- 自我评价 -->
+  {% if resume.self_evaluation %}
+  <div style="margin-bottom:16px;">
+    <h3 style="font-size:13px;font-weight:600;color:#86868b;margin-bottom:8px;">自我评价</h3>
+    <p style="font-size:13px;line-height:1.6;color:#444;">{{ resume.self_evaluation }}</p>
+  </div>
+  {% endif %}
+
+  <!-- 技术栈 -->
   {% if resume.tech_stack %}
   <div style="margin-bottom:16px;">
     <h3 style="font-size:13px;font-weight:600;color:#86868b;margin-bottom:8px;">技术栈</h3>
@@ -22,15 +45,70 @@
   </div>
   {% endif %}
 
+  <!-- 核心亮点 -->
+  {% if resume.highlights %}
+  <div style="margin-bottom:16px;">
+    <h3 style="font-size:13px;font-weight:600;color:#86868b;margin-bottom:8px;">核心亮点</h3>
+    <ul style="font-size:13px;line-height:1.8;color:#444;padding-left:18px;margin:0;">
+      {% for h in resume.highlights %}<li>{{ h }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <!-- 工作经历 -->
   {% if resume.work_experience %}
-  <div>
+  <div style="margin-bottom:16px;">
     <h3 style="font-size:13px;font-weight:600;color:#86868b;margin-bottom:8px;">工作经历</h3>
     {% for exp in resume.work_experience %}
     <div style="padding:8px 0;border-bottom:1px solid rgba(0,0,0,.04);">
       <div><strong>{{ exp.company }}</strong> · {{ exp.role }} <span style="font-size:12px;color:#86868b;">{{ exp.duration }}</span></div>
+      {% if exp.tech_stack %}<div style="font-size:12px;color:#86868b;margin-top:2px;">技术栈: {{ exp.tech_stack }}</div>{% endif %}
       <p style="font-size:13px;color:#6e6e73;margin-top:4px;">{{ exp.description }}</p>
+      {% if exp.highlights %}
+      <ul style="font-size:12px;color:#6e6e73;padding-left:16px;margin:4px 0 0;">
+        {% for h in exp.highlights %}<li>{{ h }}</li>{% endfor %}
+      </ul>
+      {% endif %}
     </div>
     {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- 项目经验 -->
+  {% if resume.projects %}
+  <div style="margin-bottom:16px;">
+    <h3 style="font-size:13px;font-weight:600;color:#86868b;margin-bottom:8px;">项目经验</h3>
+    {% for proj in resume.projects %}
+    <div style="padding:8px 0;border-bottom:1px solid rgba(0,0,0,.04);">
+      <div><strong>{{ proj.name }}</strong></div>
+      {% if proj.tech_stack %}<div style="font-size:12px;color:#86868b;margin-top:2px;">技术栈: {{ proj.tech_stack }}</div>{% endif %}
+      <p style="font-size:13px;color:#6e6e73;margin-top:4px;">{{ proj.description }}</p>
+      {% if proj.highlights %}
+      <ul style="font-size:12px;color:#6e6e73;padding-left:16px;margin:4px 0 0;">
+        {% for h in proj.highlights %}<li>{{ h }}</li>{% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- 求职意向 -->
+  {% if resume.job_preferences %}
+  <div style="margin-bottom:16px;">
+    <h3 style="font-size:13px;font-weight:600;color:#86868b;margin-bottom:8px;">求职意向</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;">
+      {% if resume.job_preferences.target_cities %}<div><span style="color:#86868b;">目标城市：</span>{{ resume.job_preferences.target_cities | join(', ') }}</div>{% endif %}
+      {% if resume.job_preferences.target_roles %}<div><span style="color:#86868b;">目标岗位：</span>{{ resume.job_preferences.target_roles | join(', ') }}</div>{% endif %}
+      {% if resume.job_preferences.salary_min or resume.job_preferences.salary_max %}<div><span style="color:#86868b;">期望薪资：</span>{{ resume.job_preferences.salary_min or '?' }}K - {{ resume.job_preferences.salary_max or '?' }}K</div>{% endif %}
+      {% if resume.job_preferences.work_type %}<div><span style="color:#86868b;">工作类型：</span>{{ resume.job_preferences.work_type }}</div>{% endif %}
+    </div>
+    {% if resume.job_preferences.priorities %}
+    <div style="margin-top:8px;font-size:13px;"><span style="color:#86868b;">优先考虑：</span>{{ resume.job_preferences.priorities | join('、') }}</div>
+    {% endif %}
+    {% if resume.job_preferences.deal_breakers %}
+    <div style="margin-top:4px;font-size:13px;"><span style="color:#86868b;">不能接受：</span>{{ resume.job_preferences.deal_breakers | join('、') }}</div>
+    {% endif %}
   </div>
   {% endif %}
 
@@ -82,10 +160,12 @@ html.dark .memory-entry { border-bottom-color: rgba(255,255,255,.04); }
 .memory-entry:last-child { border-bottom: none; padding-bottom: 0; }
 .entry-title { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
 .entry-body { font-size: 13px; line-height: 1.6; color: #444; }
-.entry-body a { color: #007aff; text-decoration: none; }
+.entry-body a { color: #007aff; text-decoration: none; word-break: break-all; }
 .entry-body a:hover { text-decoration: underline; }
 html.dark .entry-body { color: #bbb; }
 html.dark .entry-body a { color: #0a84ff; }
+html.dark .card p { color: #bbb; }
+html.dark .card ul li { color: #bbb; }
 .entry-meta { margin-top: 8px; display: flex; gap: 14px; font-size: 11px; color: #86868b; }
 .meta-source { cursor: default; }
 </style>

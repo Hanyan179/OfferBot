@@ -11,7 +11,7 @@ AI 通过 Memory Tools 读写文件，实现用户认知模型的持久化。
 - update_memory: 更新指定条目
 - delete_memory: 删除指定条目
 - list_memory_categories: 列出所有分类及条目数
-- get_user_cognitive_model: 获取完整用户画像摘要
+- get_user_cognitive_model: 获取用户画像摘要（分类+标题列表）
 """
 
 from __future__ import annotations
@@ -465,7 +465,7 @@ class ListMemoryCategoryTool(Tool):
 
 
 class GetUserCognitiveModelTool(Tool):
-    """获取用户认知模型完整摘要。"""
+    """获取用户认知模型摘要（分类+标题列表）。"""
 
     @property
     def name(self) -> str:
@@ -473,7 +473,7 @@ class GetUserCognitiveModelTool(Tool):
 
     @property
     def description(self) -> str:
-        return "返回用户认知模型的完整摘要，读取所有记忆分类文件的内容。"
+        return "返回用户认知模型摘要（分类+标题列表），需要详情请用 get_memory"
 
     @property
     def category(self) -> str:
@@ -491,21 +491,34 @@ class GetUserCognitiveModelTool(Tool):
         memory_dir = _get_memory_dir(context)
 
         if not memory_dir.exists():
-            return {"summary": "", "categories_included": []}
+            return {"categories": [], "total_entries": 0, "summary": ""}
 
-        parts: list[str] = []
-        included: list[str] = []
+        categories: list[dict] = []
+        summary_lines: list[str] = []
+        total_entries = 0
 
         for md_file in sorted(memory_dir.glob("*.md")):
-            content = md_file.read_text(encoding="utf-8").strip()
-            # 只包含有实际条目的文件（有 ## 标题的）
+            content = md_file.read_text(encoding="utf-8")
             sections = _parse_sections(content)
             if sections:
                 cat_name = _filename_to_category(md_file.name)
-                parts.append(content)
-                included.append(cat_name)
+                display_name = _get_display_name(cat_name)
+                titles = [s["title"] for s in sections]
+                entry_count = len(sections)
+                total_entries += entry_count
+
+                categories.append({
+                    "category": cat_name,
+                    "display_name": display_name,
+                    "entry_count": entry_count,
+                    "titles": titles,
+                })
+                summary_lines.append(
+                    f"{display_name}({entry_count}条): {' | '.join(titles)}"
+                )
 
         return {
-            "summary": "\n\n---\n\n".join(parts),
-            "categories_included": included,
+            "categories": categories,
+            "total_entries": total_entries,
+            "summary": "\n".join(summary_lines),
         }

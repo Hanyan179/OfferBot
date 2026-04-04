@@ -2,7 +2,7 @@
 Property-based test for GetUserCognitiveModelTool.
 
 Property 4: 用户认知模型覆盖所有非空分类
-get_user_cognitive_model 返回的摘要应包含所有非空文件内容，不包含空文件分类。
+get_user_cognitive_model 返回的摘要应包含所有非空分类的标题列表，不包含空文件分类。
 验证: 需求 3.4
 """
 
@@ -15,8 +15,8 @@ from hypothesis import given, settings, strategies as st
 
 from tools.data.memory_tools import (
     CATEGORY_FILE_MAP,
+    CATEGORY_DISPLAY_NAME,
     SaveMemoryTool,
-    GetMemoryTool,
     GetUserCognitiveModelTool,
 )
 
@@ -67,8 +67,9 @@ class TestUserCognitiveModelCoverage:
     Property 4: 用户认知模型覆盖所有非空分类
 
     For any set of memory entries across categories,
-    get_user_cognitive_model should include content from all non-empty
-    categories and exclude empty categories.
+    get_user_cognitive_model should return a summary containing
+    category names and entry titles for all non-empty categories,
+    and exclude empty categories.
 
     Validates: Requirements 3.4
     """
@@ -78,7 +79,7 @@ class TestUserCognitiveModelCoverage:
     def test_summary_includes_all_nonempty_categories(
         self, entries: list[tuple[str, str, str]]
     ):
-        """Summary should contain content from every category that has entries."""
+        """Summary should contain titles from every category that has entries."""
 
         async def _test():
             with tempfile.TemporaryDirectory() as tmp:
@@ -88,31 +89,52 @@ class TestUserCognitiveModelCoverage:
 
                 # Save all entries
                 written_categories: set[str] = set()
-                written_contents: list[str] = []
+                written_titles: dict[str, list[str]] = {}
                 for category, title, content in entries:
                     await save_tool.execute(
                         {"category": category, "title": title, "content": content},
                         ctx,
                     )
                     written_categories.add(category)
-                    written_contents.append(content)
+                    written_titles.setdefault(category, []).append(title.strip())
 
                 # Get cognitive model
                 result = await cognitive_tool.execute({}, ctx)
                 summary = result["summary"]
-                included = result["categories_included"]
+                categories = result["categories"]
+                total_entries = result["total_entries"]
 
                 # All written categories should be included
+                included_cats = {c["category"] for c in categories}
                 for cat in written_categories:
-                    assert cat in included, (
-                        f"Category '{cat}' has entries but not in included list"
+                    assert cat in included_cats, (
+                        f"Category '{cat}' has entries but not in categories list"
                     )
 
-                # All written content should appear in summary
-                for content in written_contents:
-                    assert content in summary, (
-                        f"Content not found in summary: {content[:50]}..."
-                    )
+                # Each category should have correct display_name
+                for cat_info in categories:
+                    cat_name = cat_info["category"]
+                    expected_display = CATEGORY_DISPLAY_NAME.get(cat_name, cat_name)
+                    assert cat_info["display_name"] == expected_display
+
+                # All written titles should appear in the category's titles list
+                for cat_info in categories:
+                    cat_name = cat_info["category"]
+                    if cat_name in written_titles:
+                        for title in written_titles[cat_name]:
+                            assert title in cat_info["titles"], (
+                                f"Title '{title}' not found in category '{cat_name}' titles"
+                            )
+
+                # Summary text should contain all titles
+                for cat_name, titles in written_titles.items():
+                    for title in titles:
+                        assert title in summary, (
+                            f"Title '{title}' not found in summary text"
+                        )
+
+                # total_entries should be sum of all entry_counts
+                assert total_entries == sum(c["entry_count"] for c in categories)
 
         _run_async(_test())
 
@@ -139,7 +161,7 @@ class TestUserCognitiveModelCoverage:
                     written_categories.add(category)
 
                 result = await cognitive_tool.execute({}, ctx)
-                included = set(result["categories_included"])
+                included = {c["category"] for c in result["categories"]}
 
                 # No extra categories should be included
                 assert included == written_categories, (
@@ -158,7 +180,8 @@ class TestUserCognitiveModelCoverage:
 
                 result = await cognitive_tool.execute({}, ctx)
                 assert result["summary"] == ""
-                assert result["categories_included"] == []
+                assert result["categories"] == []
+                assert result["total_entries"] == 0
 
         _run_async(_test())
 
@@ -171,6 +194,41 @@ class TestUserCognitiveModelCoverage:
 
             result = await cognitive_tool.execute({}, ctx)
             assert result["summary"] == ""
-            assert result["categories_included"] == []
+            assert result["categories"] == []
+            assert result["total_entries"] == 0
+
+        _run_async(_test())
+
+    @given(entries=st_entries)
+    @settings(max_examples=30, deadline=5000)
+    def test_summary_does_not_contain_full_content(
+        self, entries: list[tuple[str, str, str]]
+    ):
+        """Summary should NOT contain the full body content of entries (only titles)."""
+
+        async def _test():
+            with tempfile.TemporaryDirectory() as tmp:
+                ctx = {"memory_dir": tmp}
+                save_tool = SaveMemoryTool()
+                cognitive_tool = GetUserCognitiveModelTool()
+
+                for category, title, content in entries:
+                    await save_tool.execute(
+                        {"category": category, "title": title, "content": content},
+                        ctx,
+                    )
+
+                result = await cognitive_tool.execute({}, ctx)
+
+                # The result should NOT have a "categories_included" key (old format)
+                assert "categories_included" not in result
+
+                # The categories list should contain dicts with structured info
+                for cat_info in result["categories"]:
+                    assert "category" in cat_info
+                    assert "display_name" in cat_info
+                    assert "entry_count" in cat_info
+                    assert "titles" in cat_info
+                    assert isinstance(cat_info["titles"], list)
 
         _run_async(_test())
