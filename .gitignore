@@ -64,3 +64,9 @@ reference-crawler/
 
 # 内部笔记
 notes/
+
+# 私人数据
+boss-agent/data/conversations/
+boss-agent/data/记忆画像/
+boss-agent/boss-agent/
+cli
