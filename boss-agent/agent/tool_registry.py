@@ -1,0 +1,137 @@
+"""
+Tool 基类和 ToolRegistry 工具注册中心
+
+定义 Tool 抽象基类（所有 Tool 必须实现此接口）和
+ToolRegistry（统一管理 Tool 的注册、发现、调用）。
+"""
+
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from typing import Any
+
+
+class Tool(ABC):
+    """Tool 基类，所有 Tool 必须实现此接口。"""
+
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        """Tool 唯一名称"""
+        ...
+
+    @property
+    @abstractmethod
+    def description(self) -> str:
+        """Tool 功能描述"""
+        ...
+
+    @property
+    @abstractmethod
+    def parameters_schema(self) -> dict:
+        """JSON Schema 格式的参数定义"""
+        ...
+
+    @property
+    def is_concurrency_safe(self) -> bool:
+        """是否可并发执行（只读 Tool 返回 True）"""
+        return False
+
+    @property
+    def category(self) -> str:
+        """Tool 分类，用于 get_tools_by_category 查询"""
+        return "general"
+
+    @abstractmethod
+    async def execute(self, params: dict, context: Any) -> Any:
+        """
+        执行 Tool。
+
+        Args:
+            params: 调用参数，符合 parameters_schema 定义。
+            context: Agent 上下文对象。
+
+        Returns:
+            ToolResult 对象。
+        """
+        ...
+
+
+class ToolRegistry:
+    """
+    工具注册中心，统一管理 Tool 的注册、发现、调用。
+    """
+
+    def __init__(self) -> None:
+        self._tools: dict[str, Tool] = {}
+
+    def register(self, tool: Tool, *, allow_overwrite: bool = True) -> None:
+        """注册 Tool。
+
+        Args:
+            tool: 要注册的 Tool 实例。
+            allow_overwrite: 是否允许覆盖同名 Tool。为 False 时重复注册抛出 ValueError。
+        """
+        if not allow_overwrite and tool.name in self._tools:
+            raise ValueError(
+                f"Tool '{tool.name}' is already registered. "
+                "Use allow_overwrite=True to replace it."
+            )
+        self._tools[tool.name] = tool
+
+    def get_tool(self, name: str) -> Tool | None:
+        """按名称获取 Tool，不存在返回 None。"""
+        return self._tools.get(name)
+
+    def get_all_schemas(self) -> list[dict]:
+        """
+        返回所有 Tool 的 JSON Schema，用于 LLM Function Calling。
+
+        返回格式符合 OpenAI / DashScope Function Calling 协议：
+        [
+            {
+                "type": "function",
+                "function": {
+                    "name": "<tool_name>",
+                    "description": "<tool_description>",
+                    "parameters": { ... JSON Schema ... }
+                }
+            },
+            ...
+        ]
+        """
+        schemas: list[dict] = []
+        for tool in self._tools.values():
+            schemas.append({
+                "type": "function",
+                "function": {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters": tool.parameters_schema,
+                },
+            })
+        return schemas
+
+    def get_tools_by_category(self, category: str) -> list[Tool]:
+        """按分类获取 Tool 列表。"""
+        return [t for t in self._tools.values() if t.category == category]
+
+    def list_tool_names(self) -> list[str]:
+        """返回所有已注册 Tool 的名称列表。"""
+        return list(self._tools.keys())
+
+    @property
+    def tool_count(self) -> int:
+        """已注册 Tool 数量。"""
+        return len(self._tools)
+
+    def has_tool(self, name: str) -> bool:
+        """检查是否已注册指定名称的 Tool。"""
+        return name in self._tools
+
+    def unregister(self, name: str) -> bool:
+        """注销 Tool，返回是否成功（Tool 不存在时返回 False）。"""
+        if name in self._tools:
+            del self._tools[name]
+            return True
+        return False

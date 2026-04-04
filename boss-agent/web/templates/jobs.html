@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <h1>📋 岗位数据</h1>
+  <p>本地缓存的岗位数据，供 AI 分析和你自己查看使用。</p>
+</div>
+
+<div class="toolbar">
+  <div style="display:flex;gap:8px;">
+    <select style="width:auto;padding:6px 12px;font-size:12px;">
+      <option>全部城市</option><option>上海</option><option>北京</option><option>深圳</option><option>杭州</option>
+    </select>
+    <select style="width:auto;padding:6px 12px;font-size:12px;">
+      <option>全部薪资</option><option>15K-25K</option><option>25K-40K</option><option>40K+</option>
+    </select>
+  </div>
+  <div class="toolbar-right">
+    <button class="btn btn-primary btn-sm" onclick="openModal('add-job-modal')">+ 添加岗位</button>
+  </div>
+</div>
+
+<div class="card" style="padding:0;overflow:hidden;">
+  <table>
+    <thead><tr><th>岗位</th><th>公司</th><th>薪资</th><th>城市</th><th>匹配度</th><th>操作</th></tr></thead>
+    <tbody>
+    {% for job in jobs %}
+    <tr>
+      <td><a href="{{ job.url }}" target="_blank" style="color:#007aff;text-decoration:none;">{{ job.title }}</a></td>
+      <td>{{ job.company }}</td>
+      <td>{{ job.salary }}</td>
+      <td>{{ job.city }}</td>
+      <td><span class="badge {% if job.score >= 80 %}badge-green{% elif job.score >= 60 %}badge-yellow{% else %}badge-red{% endif %}">{{ job.score }}%</span></td>
+      <td><button class="btn btn-secondary btn-sm">编辑</button> <button class="btn btn-danger btn-sm">删除</button></td>
+    </tr>
+    {% endfor %}
+    {% if not jobs %}
+    <tr><td colspan="6" class="empty">暂无岗位数据</td></tr>
+    {% endif %}
+    </tbody>
+  </table>
+</div>
+
+<!-- 添加岗位模态框 -->
+<div class="modal-overlay" id="add-job-modal">
+  <div class="modal">
+    <h2>添加岗位</h2>
+    <div class="form-group"><label>岗位名称</label><input type="text" placeholder="AI 工程师"></div>
+    <div class="form-group"><label>公司</label><input type="text" placeholder="字节跳动"></div>
+    <div class="form-group"><label>薪资</label><input type="text" placeholder="30-50K"></div>
+    <div class="form-group"><label>城市</label><input type="text" placeholder="上海"></div>
+    <div class="form-group"><label>链接</label><input type="url" placeholder="https://..."></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('add-job-modal')">取消</button>
+      <button class="btn btn-primary">保存</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function openModal(id) { document.getElementById(id).classList.add('active'); }
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+</script>
+{% endblock %}

@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OfferBot</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', -apple-system, sans-serif; }
+html, body { height: 100%; overflow: hidden; transition: background .2s, color .2s; }
+
+/* ===== 浅色（默认） ===== */
+body { background: #f5f5f7; color: #1d1d1f; }
+.nav { background: rgba(255,255,255,.85); border-bottom: .5px solid rgba(0,0,0,.1); }
+.nav-brand { color: #1d1d1f; }
+.nav-links a { color: #6e6e73; }
+.nav-links a:hover { background: rgba(0,0,0,.04); color: #1d1d1f; }
+.nav-links a.active { background: #007aff; color: #fff; }
+
+/* ===== 深色 ===== */
+html.dark body { background: #1a1a1a; color: #e5e5e5; }
+html.dark .nav { background: rgba(30,30,30,.9); border-bottom-color: rgba(255,255,255,.08); }
+html.dark .nav-brand { color: #e5e5e5; }
+html.dark .nav-links a { color: #8e8e93; }
+html.dark .nav-links a:hover { background: rgba(255,255,255,.06); color: #e5e5e5; }
+html.dark .nav-links a.active { background: #0a84ff; color: #fff; }
+
+/* 导航 */
+.nav { backdrop-filter: saturate(180%) blur(20px); z-index: 100; }
+.nav-inner { max-width: 100%; margin: 0 auto; display: flex; align-items: center; padding: 0 24px; height: 48px; gap: 24px; }
+.nav-brand { font-size: 15px; font-weight: 700; text-decoration: none; white-space: nowrap; }
+.nav-links { display: flex; gap: 4px; }
+.nav-links a {
+  font-size: 13px; font-weight: 500; text-decoration: none;
+  padding: 6px 14px; border-radius: 8px; transition: all .15s; cursor: pointer; white-space: nowrap;
+}
+
+/* 主题切换按钮 */
+.theme-toggle {
+  margin-left: auto; cursor: pointer; font-size: 18px; line-height: 1;
+  background: none; border: none; padding: 4px 8px; border-radius: 6px;
+  transition: background .15s;
+}
+.theme-toggle:hover { background: rgba(128,128,128,.1); }
+
+/* 内容区域 */
+.content-area { height: calc(100vh - 48px); position: relative; }
+.tab-panel { display: none; height: 100%; overflow-y: auto; }
+.tab-panel.active { display: block; }
+.tab-panel iframe { width: 100%; height: 100%; border: none; }
+</style>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="nav-brand">🤖 OfferBot</a>
+    <div class="nav-links">
+      <a data-tab="chat" class="active">💬 对话</a>
+      <a data-tab="jobs">📋 岗位</a>
+      <a data-tab="resume">📄 简历</a>
+      <a data-tab="interviews">🎯 面试</a>
+      <a data-tab="overview">🏆 总览</a>
+      <a data-tab="settings">⚙️ 设置</a>
+    </div>
+    <button class="theme-toggle" id="themeToggle" title="切换深浅色" style="display:none;">🌙</button>
+  </div>
+</nav>
+
+<div class="content-area">
+  <div id="panel-chat" class="tab-panel active">
+    <iframe src="/chat" id="chatFrame"></iframe>
+  </div>
+  <div id="panel-jobs" class="tab-panel">
+    <iframe src="/page/jobs" loading="lazy"></iframe>
+  </div>
+  <div id="panel-resume" class="tab-panel">
+    <iframe src="/page/resume" loading="lazy"></iframe>
+  </div>
+  <div id="panel-interviews" class="tab-panel">
+    <iframe src="/page/interviews" loading="lazy"></iframe>
+  </div>
+  <div id="panel-overview" class="tab-panel">
+    <iframe src="/page/overview" loading="lazy"></iframe>
+  </div>
+  <div id="panel-settings" class="tab-panel">
+    <iframe src="/page/settings" loading="lazy" id="settingsFrame"></iframe>
+  </div>
+</div>
+
+<script>
+// ===== 标签页切换 =====
+function switchToTab(tabName) {
+  document.querySelectorAll('.nav-links a').forEach(a => a.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  const link = document.querySelector('.nav-links a[data-tab="' + tabName + '"]');
+  if (link) link.classList.add('active');
+  const panel = document.getElementById('panel-' + tabName);
+  if (panel) panel.classList.add('active');
+}
+
+document.querySelectorAll('.nav-links a[data-tab]').forEach(link => {
+  link.addEventListener('click', () => switchToTab(link.dataset.tab));
+});
+
+// ===== 深浅色主题（跟随 Chainlit） =====
+function applyNavTheme(dark) {
+  document.documentElement.classList.toggle('dark', dark);
+  // 同步到 embed iframe
+  document.querySelectorAll('.tab-panel:not(#panel-chat) iframe').forEach(iframe => {
+    try { iframe.contentWindow.postMessage({ type: 'themeChange', dark: dark }, '*'); } catch(e) {}
+  });
+}
+
+// 轮询 localStorage 检测 Chainlit 主题变化（最可靠的方式）
+let lastTheme = localStorage.getItem('colorMode') || 'light';
+applyNavTheme(lastTheme === 'dark');
+
+setInterval(() => {
+  const current = localStorage.getItem('colorMode') || 'light';
+  if (current !== lastTheme) {
+    lastTheme = current;
+    applyNavTheme(current === 'dark');
+  }
+}, 500);
+
+// 监听 iframe 消息（设置保存等）
+window.addEventListener('message', (e) => {
+  if (!e.data || !e.data.type) return;
+  if (e.data.type === 'switchTab') {
+    switchToTab(e.data.tab);
+  }
+  if (e.data.type === 'settingsSaved') {
+    switchToTab('chat');
+    const chatFrame = document.getElementById('chatFrame');
+    if (chatFrame) chatFrame.src = chatFrame.src;
+  }
+  if (e.data.type === 'chainlitThemeChange') {
+    applyNavTheme(e.data.dark);
+  }
+});
+</script>
+</body>
+</html>

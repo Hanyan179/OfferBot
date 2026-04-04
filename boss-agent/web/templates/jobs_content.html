@@ -1,0 +1,23 @@
+<div class="page-header">
+  <h1>📋 岗位数据</h1>
+  <p>本地缓存的岗位数据，供 AI 分析和你自己查看使用。</p>
+</div>
+<div class="card" style="padding:0;overflow:hidden;">
+  <table>
+    <thead><tr><th>岗位</th><th>公司</th><th>薪资</th><th>城市</th><th>匹配度</th></tr></thead>
+    <tbody>
+    {% for job in jobs %}
+    <tr>
+      <td>{{ job.title }}</td>
+      <td>{{ job.company }}</td>
+      <td>{{ job.salary }}</td>
+      <td>{{ job.city }}</td>
+      <td><span class="badge {% if job.score >= 80 %}badge-green{% elif job.score >= 60 %}badge-yellow{% else %}badge-red{% endif %}">{{ job.score }}%</span></td>
+    </tr>
+    {% endfor %}
+    {% if not jobs %}
+    <tr><td colspan="5" class="empty">暂无岗位数据</td></tr>
+    {% endif %}
+    </tbody>
+  </table>
+</div>

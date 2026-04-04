@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <h1>📄 简历管理</h1>
+  <p>你的简历数据。可以手动编辑，也可以上传文件让 AI 解析，或通过对话让 AI 帮你更新。</p>
+</div>
+
+<div class="toolbar">
+  <div></div>
+  <div class="toolbar-right">
+    <button class="btn btn-secondary btn-sm">📤 上传简历</button>
+    <button class="btn btn-secondary btn-sm">📥 导出 DOCX</button>
+    <button class="btn btn-primary btn-sm" onclick="openModal('edit-resume-modal')">✏️ 编辑</button>
+  </div>
+</div>
+
+<!-- 基本信息 -->
+<div class="card">
+  <h3 style="font-size:15px;font-weight:600;margin-bottom:12px;">基本信息</h3>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:14px;">
+    <div><span style="color:#86868b;">姓名：</span>{{ resume.name or '未填写' }}</div>
+    <div><span style="color:#86868b;">城市：</span>{{ resume.city or '未填写' }}</div>
+    <div><span style="color:#86868b;">经验：</span>{{ resume.experience or '未填写' }}</div>
+    <div><span style="color:#86868b;">学历：</span>{{ resume.education or '未填写' }}</div>
+  </div>
+</div>
+
+<!-- 技术栈 -->
+<div class="card">
+  <h3 style="font-size:15px;font-weight:600;margin-bottom:12px;">技术栈</h3>
+  <div style="display:flex;flex-wrap:wrap;gap:6px;">
+    {% for skill in resume.tech_stack %}
+    <span class="badge badge-blue">{{ skill }}</span>
+    {% endfor %}
+    {% if not resume.tech_stack %}
+    <span style="color:#86868b;font-size:13px;">暂无技术栈数据</span>
+    {% endif %}
+  </div>
+</div>
+
+<!-- 工作经历 -->
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+    <h3 style="font-size:15px;font-weight:600;">工作经历</h3>
+    <button class="btn btn-secondary btn-sm">+ 添加</button>
+  </div>
+  {% for exp in resume.work_experience %}
+  <div style="padding:12px 0;border-bottom:1px solid rgba(0,0,0,.04);">
+    <div style="display:flex;justify-content:space-between;">
+      <div><strong>{{ exp.company }}</strong> · {{ exp.role }}</div>
+      <span style="font-size:12px;color:#86868b;">{{ exp.duration }}</span>
+    </div>
+    <p style="font-size:13px;color:#6e6e73;margin-top:4px;">{{ exp.description }}</p>
+  </div>
+  {% endfor %}
+  {% if not resume.work_experience %}
+  <div class="empty"><div class="empty-icon">💼</div>暂无工作经历</div>
+  {% endif %}
+</div>
+
+<!-- 优化建议 -->
+{% if suggestions %}
+<div class="card">
+  <h3 style="font-size:15px;font-weight:600;margin-bottom:12px;">AI 优化建议</h3>
+  {% for s in suggestions %}
+  <div style="display:flex;gap:8px;padding:6px 0;font-size:13px;">
+    <span>{{ s.icon }}</span><span>{{ s.text }}</span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- 编辑模态框 -->
+<div class="modal-overlay" id="edit-resume-modal">
+  <div class="modal">
+    <h2>编辑简历</h2>
+    <div class="form-group"><label>姓名</label><input type="text" value="{{ resume.name or '' }}"></div>
+    <div class="form-group"><label>城市</label><input type="text" value="{{ resume.city or '' }}"></div>
+    <div class="form-group"><label>工作年限</label><input type="text" value="{{ resume.experience or '' }}"></div>
+    <div class="form-group"><label>学历</label><input type="text" value="{{ resume.education or '' }}"></div>
+    <div class="form-group"><label>技术栈（逗号分隔）</label><input type="text" value="{{ resume.tech_stack | join(', ') }}"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('edit-resume-modal')">取消</button>
+      <button class="btn btn-primary">保存</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function openModal(id) { document.getElementById(id).classList.add('active'); }
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+</script>
+{% endblock %}

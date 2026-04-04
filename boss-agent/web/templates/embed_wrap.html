@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ title }}</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', -apple-system, sans-serif; }
+body { background: #f5f5f7; color: #1d1d1f; padding: 24px; transition: background .2s, color .2s; }
+html.dark body { background: #1a1a1a; color: #e5e5e5; }
+.container { max-width: 1100px; margin: 0 auto; }
+.page-header { margin-bottom: 20px; }
+.page-header h1 { font-size: 22px; font-weight: 700; }
+.page-header p { font-size: 13px; color: #86868b; margin-top: 4px; }
+.card { background: #fff; border-radius: 14px; border: 1px solid rgba(0,0,0,.04); padding: 20px; margin-bottom: 16px; transition: background .2s; }
+html.dark .card { background: #2a2a2a; border-color: rgba(255,255,255,.06); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; padding: 10px 14px; color: #6b7280; font-weight: 500; background: #f9fafb; font-size: 12px; }
+html.dark th { background: #2a2a2a; color: #8e8e93; }
+td { padding: 11px 14px; border-bottom: 1px solid rgba(0,0,0,.04); }
+html.dark td { border-bottom-color: rgba(255,255,255,.06); }
+tr:hover td { background: #fafafa; }
+html.dark tr:hover td { background: #333; }
+.badge { display: inline-block; padding: 2px 10px; border-radius: 99px; font-size: 11px; font-weight: 600; }
+.badge-green { background: #d1fae5; color: #065f46; }
+.badge-yellow { background: #fef3c7; color: #92400e; }
+.badge-red { background: #fee2e2; color: #991b1b; }
+.badge-blue { background: #dbeafe; color: #1e40af; }
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.stat-card { background: #fff; border-radius: 14px; padding: 16px; text-align: center; border: 1px solid rgba(0,0,0,.04); transition: background .2s; }
+html.dark .stat-card { background: #2a2a2a; border-color: rgba(255,255,255,.06); }
+.stat-num { font-size: 28px; font-weight: 700; }
+.stat-label { font-size: 12px; color: #86868b; margin-top: 2px; }
+.empty { text-align: center; padding: 48px 0; color: #86868b; }
+</style>
+</head>
+<body>
+<div class="container">
+{% include content_template %}
+</div>
+<script>
+window.addEventListener('message', (e) => {
+  if (e.data && e.data.type === 'themeChange') {
+    document.documentElement.classList.toggle('dark', e.data.dark);
+  }
+});
+</script>
+</body>
+</html>

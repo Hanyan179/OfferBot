@@ -1,0 +1,35 @@
+# Boss Agent 依赖
+
+# --- UI ---
+chainlit>=2.0
+
+# --- 浏览器自动化 ---
+playwright>=1.40
+
+# --- LLM / Embedding ---
+dashscope>=1.14
+openai>=1.0
+
+# --- 向量检索 ---
+faiss-cpu>=1.7
+
+# --- 关键词检索 ---
+rank_bm25>=0.2
+
+# --- 简历处理 ---
+python-docx>=1.0
+pdfplumber>=0.10
+
+# --- 属性测试 ---
+hypothesis>=6.90
+pytest>=7.0
+pytest-asyncio>=0.23
+
+# --- 数据库 ---
+aiosqlite>=0.19
+
+# --- YAML 解析 ---
+pyyaml>=6.0
+
+# --- 工具 ---
+aiohttp>=3.9

@@ -1,0 +1,42 @@
+<div class="page-header">
+  <h1>📄 简历管理</h1>
+  <p>你的简历数据，可通过对话让 AI 帮你更新。</p>
+</div>
+<div class="card">
+  <h3 style="font-size:15px;font-weight:600;margin-bottom:12px;">基本信息</h3>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:14px;">
+    <div><span style="color:#86868b;">姓名：</span>{{ resume.name or '未填写' }}</div>
+    <div><span style="color:#86868b;">城市：</span>{{ resume.city or '未填写' }}</div>
+    <div><span style="color:#86868b;">经验：</span>{{ resume.experience or '未填写' }}</div>
+    <div><span style="color:#86868b;">学历：</span>{{ resume.education or '未填写' }}</div>
+  </div>
+</div>
+<div class="card">
+  <h3 style="font-size:15px;font-weight:600;margin-bottom:12px;">技术栈</h3>
+  <div style="display:flex;flex-wrap:wrap;gap:6px;">
+    {% for skill in resume.tech_stack %}<span class="badge badge-blue">{{ skill }}</span>{% endfor %}
+    {% if not resume.tech_stack %}
+    <span style="color:#86868b;font-size:13px;">暂无技术栈数据，可通过对话告诉 AI 你的技能</span>
+    {% endif %}
+  </div>
+</div>
+<div class="card">
+  <h3 style="font-size:15px;font-weight:600;margin-bottom:12px;">工作经历</h3>
+  {% for exp in resume.work_experience %}
+  <div style="padding:12px 0;border-bottom:1px solid rgba(0,0,0,.04);">
+    <div><strong>{{ exp.company }}</strong> · {{ exp.role }} <span style="font-size:12px;color:#86868b;">{{ exp.duration }}</span></div>
+    <p style="font-size:13px;color:#6e6e73;margin-top:4px;">{{ exp.description }}</p>
+  </div>
+  {% endfor %}
+  {% if not resume.work_experience %}
+  <div class="empty" style="padding:24px 0;">暂无工作经历，可通过对话告诉 AI 你的经历</div>
+  {% endif %}
+</div>
+{% if suggestions %}
+<div class="card">
+  <h3 style="font-size:15px;font-weight:600;margin-bottom:12px;">AI 优化建议</h3>
+  {% for s in suggestions %}
+  <div style="display:flex;gap:8px;padding:6px 0;font-size:13px;"><span>{{ s.icon }}</span><span>{{ s.text }}</span></div>
+  {% endfor %}
+</div>
+{% endif %}

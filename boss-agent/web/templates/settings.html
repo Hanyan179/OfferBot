@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <h1>⚙️ 设置</h1>
+  <p>配置 LLM API 连接信息，保存后在对话中即时生效</p>
+</div>
+
+<div class="card" style="max-width:600px;">
+  <form id="settingsForm">
+    <div class="form-group">
+      <label for="provider">LLM 厂商</label>
+      <select id="provider" onchange="onProviderChange()">
+        <option value="dashscope" {% if provider == 'dashscope' %}selected{% endif %}>阿里云 DashScope</option>
+        <option value="openai" {% if provider == 'openai' %}selected{% endif %}>OpenAI</option>
+        <option value="gemini" {% if provider == 'gemini' %}selected{% endif %}>Google Gemini</option>
+        <option value="deepseek" {% if provider == 'deepseek' %}selected{% endif %}>DeepSeek</option>
+        <option value="custom" {% if provider == 'custom' %}selected{% endif %}>自定义</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="api_key">API Key</label>
+      <input type="text" id="api_key" name="api_key" value="{{ api_key }}" placeholder="输入你的 API Key">
+    </div>
+
+    <div class="form-group">
+      <label for="base_url">API Base URL</label>
+      <input type="text" id="base_url" name="base_url" value="{{ base_url }}" placeholder="留空使用厂商默认值">
+      <small style="color:#86868b;font-size:12px;">留空将自动使用所选厂商的默认地址</small>
+    </div>
+
+    <div class="form-group">
+      <label for="model">模型型号</label>
+      <input type="text" id="model" name="model" value="{{ model }}" placeholder="留空使用厂商默认值">
+      <small style="color:#86868b;font-size:12px;">留空将自动使用所选厂商的默认模型</small>
+    </div>
+
+    <div style="display:flex;gap:8px;align-items:center;">
+      <button type="submit" class="btn btn-primary">💾 保存配置</button>
+      <button type="button" class="btn btn-secondary" onclick="testConnection()">🔗 测试连接</button>
+      <span id="statusMsg" style="font-size:13px;"></span>
+    </div>
+  </form>
+</div>
+
+<div class="card" style="max-width:600px;margin-top:12px;">
+  <h3 style="font-size:15px;font-weight:600;margin-bottom:12px;">厂商预设参考</h3>
+  <table>
+    <thead><tr><th>厂商</th><th>Base URL</th><th>默认模型</th></tr></thead>
+    <tbody>
+      <tr><td>阿里云 DashScope</td><td style="font-size:11px;">dashscope.aliyuncs.com/compatible-mode/v1</td><td>qwen3.5-flash</td></tr>
+      <tr><td>OpenAI</td><td style="font-size:11px;">api.openai.com/v1</td><td>gpt-4o</td></tr>
+      <tr><td>Google Gemini</td><td style="font-size:11px;">generativelanguage.googleapis.com/v1beta/openai/</td><td>gemini-2.5-flash</td></tr>
+      <tr><td>DeepSeek</td><td style="font-size:11px;">api.deepseek.com/v1</td><td>deepseek-chat</td></tr>
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const PRESETS = {
+  dashscope: { base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3.5-flash" },
+  openai:    { base_url: "https://api.openai.com/v1", model: "gpt-4o" },
+  gemini:    { base_url: "https://generativelanguage.googleapis.com/v1beta/openai/", model: "gemini-2.5-flash" },
+  deepseek:  { base_url: "https://api.deepseek.com/v1", model: "deepseek-chat" },
+  custom:    { base_url: "", model: "" },
+};
+
+function onProviderChange() {
+  const p = document.getElementById("provider").value;
+  const preset = PRESETS[p];
+  if (preset) {
+    document.getElementById("base_url").value = preset.base_url;
+    document.getElementById("model").value = preset.model;
+  }
+}
+
+document.getElementById("settingsForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const msg = document.getElementById("statusMsg");
+  msg.textContent = "保存中...";
+  msg.style.color = "#86868b";
+
+  const body = {
+    provider: document.getElementById("provider").value,
+    api_key: document.getElementById("api_key").value,
+    base_url: document.getElementById("base_url").value,
+    model: document.getElementById("model").value,
+  };
+
+  try {
+    const res = await fetch("/api/settings", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body) });
+    const data = await res.json();
+    if (data.ok) { msg.textContent = "✅ 已保存"; msg.style.color = "#065f46"; }
+    else { msg.textContent = "❌ " + (data.error || "保存失败"); msg.style.color = "#991b1b"; }
+  } catch(err) { msg.textContent = "❌ 网络错误"; msg.style.color = "#991b1b"; }
+});
+
+async function testConnection() {
+  const msg = document.getElementById("statusMsg");
+  msg.textContent = "测试中...";
+  msg.style.color = "#86868b";
+
+  const body = {
+    api_key: document.getElementById("api_key").value,
+    base_url: document.getElementById("base_url").value,
+    model: document.getElementById("model").value,
+  };
+
+  try {
+    const res = await fetch("/api/settings/test", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body) });
+    const data = await res.json();
+    if (data.ok) { msg.textContent = "✅ 连接成功: " + data.response.substring(0, 50); msg.style.color = "#065f46"; }
+    else { msg.textContent = "❌ " + (data.error || "连接失败"); msg.style.color = "#991b1b"; }
+  } catch(err) { msg.textContent = "❌ 网络错误"; msg.style.color = "#991b1b"; }
+}
+</script>
+{% endblock %}

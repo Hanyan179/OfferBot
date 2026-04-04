@@ -1,0 +1,66 @@
+# === Python ===
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+
+# === 虚拟环境 ===
+.venv/
+.venv-*/
+venv/
+
+# === IDE ===
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# === OS ===
+.DS_Store
+Thumbs.db
+
+# === 测试/缓存 ===
+.pytest_cache/
+.hypothesis/
+htmlcov/
+.coverage
+
+# === Chainlit ===
+.chainlit/
+.files/
+boss-agent/.chainlit/
+boss-agent/.files/
+boss-agent/web/.chainlit/
+boss-agent/web/.files/
+
+# === 数据库（运行时生成） ===
+*.db
+*.sqlite
+*.sqlite3
+*.db-wal
+*.db-shm
+
+# === 私有数据（个人简历、面试资料、知识库） ===
+boss-agent/data/knowledge/*
+boss-agent/data/resume/*
+boss-agent/data/index/*
+!boss-agent/data/**/.gitkeep
+
+# === 参考代码（不开源） ===
+reference-claude/
+reference-crawler/
+
+# === API Key / 环境变量 ===
+.env
+.env.*
+
+# === Kiro specs（开发过程文档） ===
+.kiro/
+
+# === 其他 ===
+*.log
+
+# 内部笔记
+notes/
