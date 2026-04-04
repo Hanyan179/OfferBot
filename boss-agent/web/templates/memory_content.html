@@ -1,0 +1,48 @@
+<div class="page-header">
+  <h1>🧠 记忆画像</h1>
+  <p>AI 从对话中自动提取的用户认知模型，按分类组织。</p>
+</div>
+
+{% if not categories %}
+<div class="empty">暂无记忆数据，和 AI 对话后会自动积累。</div>
+{% endif %}
+
+{% for cat in categories %}
+<div class="card memory-category">
+  <h2 class="category-title">{{ cat.display_name }}</h2>
+  {% if not cat.entries %}
+  <p class="empty-cat">暂无条目</p>
+  {% endif %}
+  {% for entry in cat.entries %}
+  <div class="memory-entry">
+    <h3 class="entry-title">{{ entry.title }}</h3>
+    <div class="entry-body">{{ entry.body_html }}</div>
+    {% if entry.source_id or entry.extracted_at %}
+    <div class="entry-meta">
+      {% if entry.source_id %}
+      <span class="meta-source" title="来源会话: {{ entry.source_id }}">📎 {{ entry.source_id }}</span>
+      {% endif %}
+      {% if entry.extracted_at %}
+      <span class="meta-time">🕐 {{ entry.extracted_at }}</span>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endfor %}
+
+<style>
+.memory-category { margin-bottom: 20px; }
+.category-title { font-size: 17px; font-weight: 700; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid rgba(0,0,0,.06); }
+html.dark .category-title { border-bottom-color: rgba(255,255,255,.08); }
+.empty-cat { font-size: 13px; color: #86868b; }
+.memory-entry { padding: 12px 0; border-bottom: 1px solid rgba(0,0,0,.04); }
+html.dark .memory-entry { border-bottom-color: rgba(255,255,255,.04); }
+.memory-entry:last-child { border-bottom: none; padding-bottom: 0; }
+.entry-title { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+.entry-body { font-size: 13px; line-height: 1.6; color: #444; white-space: pre-wrap; }
+html.dark .entry-body { color: #bbb; }
+.entry-meta { margin-top: 8px; display: flex; gap: 14px; font-size: 11px; color: #86868b; }
+.meta-source { cursor: default; }
+</style>

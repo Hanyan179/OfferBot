@@ -10,6 +10,7 @@ Boss Agent — FastAPI 主应用（单页面架构）
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -372,6 +373,68 @@ async def page_overview(request: Request):
     return templates.TemplateResponse(request, "embed_wrap.html", {
         "title": "求职总览", "content_template": "overview_content.html",
         **overview,
+    })
+
+
+def _parse_memory_files(memory_dir: Path) -> list[dict]:
+    """读取记忆画像文件夹下所有 .md 文件，解析为模板数据。"""
+    categories = []
+    if not memory_dir.is_dir():
+        return categories
+
+    for md_file in sorted(memory_dir.glob("*.md")):
+        content = md_file.read_text(encoding="utf-8")
+        if not content.strip():
+            continue
+
+        # 提取 # 一级标题作为分类名
+        display_name = md_file.stem
+        for line in content.split("\n"):
+            if line.startswith("# ") and not line.startswith("## "):
+                display_name = line[2:].strip()
+                break
+
+        # 按 ## 分割条目
+        entries = []
+        sections = re.split(r"(?m)^## ", content)
+        for section in sections[1:]:  # 跳过第一段（# 标题之前的内容）
+            lines = section.split("\n", 1)
+            title = lines[0].strip()
+            body = lines[1].strip() if len(lines) > 1 else ""
+
+            # 提取溯源元数据行: > 来源: xxx | 提取于: xxx
+            source_id = ""
+            extracted_at = ""
+            body_lines = []
+            for bline in body.split("\n"):
+                m = re.match(r"^>\s*来源:\s*(\S+)", bline)
+                if m:
+                    source_id = m.group(1)
+                    m2 = re.search(r"提取于:\s*(.+)", bline)
+                    if m2:
+                        extracted_at = m2.group(1).strip()
+                    continue
+                body_lines.append(bline)
+
+            entries.append({
+                "title": title,
+                "body_html": "\n".join(body_lines).strip(),
+                "source_id": source_id,
+                "extracted_at": extracted_at,
+            })
+
+        categories.append({"display_name": display_name, "entries": entries})
+
+    return categories
+
+
+@app.get("/page/memory", response_class=HTMLResponse)
+async def page_memory(request: Request):
+    memory_dir = _project_root / "data" / "记忆画像"
+    categories = _parse_memory_files(memory_dir)
+    return templates.TemplateResponse(request, "embed_wrap.html", {
+        "title": "记忆画像", "content_template": "memory_content.html",
+        "categories": categories,
     })
 
 
