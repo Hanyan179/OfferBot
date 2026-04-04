@@ -47,12 +47,14 @@ OfferBot 执行：
 ## 特性
 
 - **Agent 架构** — ReAct 模式，LLM 动态决策 + 工具调用
+- **记忆系统** — MemoryExtractor 子 Agent 异步提取对话中的用户信息，写入记忆画像文件；下次对话自动加载，Agent 越用越懂你
+- **Skills 系统** — Markdown 格式的业务场景剧本（简历生成、面试准备等），动态注入 System Prompt，Agent 按场景执行
 - **多 LLM 支持** — OpenAI 兼容格式，支持阿里云 DashScope / OpenAI / Google Gemini / DeepSeek
 - **RAG 知识库** — FAISS 向量检索 + BM25 关键词检索 + RRF 融合 + Rerank
 - **浏览器自动化** — Playwright 驱动，支持 Boss 直聘等平台（开发中）
 - **Web UI** — 对话 + 岗位管理 + 简历管理 + 面试追踪
 - **Tool 可扩展** — 继承基类，注册即用（[开发指南](docs/tool-development.md)）
-- **本地存储** — SQLite，数据不上传
+- **本地存储** — SQLite + Markdown 记忆文件 + JSONL 对话历史，数据不上传
 
 ## 架构
 
@@ -75,17 +77,25 @@ OfferBot 执行：
                    │
 ┌──────────────────▼──────────────────────────┐
 │              Agent Core                      │
-│  Executor + Planner + Memory + LLM Client    │
+│                                              │
+│  Executor (主 Agent Loop)                    │
+│    ├── LLM Client (多厂商切换)               │
+│    ├── System Prompt (人设 + 记忆指引 + Skills)│
+│    └── MemoryExtractor (子 Agent, 异步提取)   │
+│                                              │
+│  Skill Loader (Markdown 场景剧本)            │
+│  Memory (用户偏好 + 黑名单 + 投递历史)        │
 └──────────────────┬──────────────────────────┘
                    │
 ┌──────────────────▼──────────────────────────┐
 │              Tool Layer                      │
-│  数据操作 │ AI 分析 │ 浏览器自动化 │ RAG     │
+│  数据操作 │ 记忆工具 │ AI 分析 │ 浏览器 │ RAG │
 └──────────────────┬──────────────────────────┘
                    │
 ┌──────────────────▼──────────────────────────┐
 │              Storage                         │
-│  SQLite │ FAISS 向量索引 │ 知识库文档         │
+│  SQLite │ 记忆画像 (Markdown) │ Skills (MD)  │
+│  FAISS 向量索引 │ 对话历史 (JSONL)            │
 └─────────────────────────────────────────────┘
 ```
 
@@ -158,17 +168,18 @@ export DASHSCOPE_LLM_MODEL="gemini-2.0-flash"
 
 ```
 boss-agent/
-├── agent/          # Agent 核心（Executor, Planner, LLM Client, Memory）
+├── agent/          # Agent 核心（Executor, LLM Client, Memory, MemoryExtractor）
 ├── db/             # SQLite 数据库
 ├── rag/            # RAG Pipeline（Embedding, 索引, 检索, Rerank）
 ├── tools/          # Tool 层
-│   ├── data/       #   数据操作（岗位、投递、统计、黑名单）
+│   ├── data/       #   数据操作（岗位、投递、统计、黑名单、记忆）
 │   ├── ai/         #   AI 分析（JD 解析、匹配）
 │   └── browser/    #   浏览器自动化（搜索、投递）
+├── skills/         # Markdown 场景剧本（简历生成、面试准备等）
 ├── web/            # Web UI（FastAPI + Chainlit）
 ├── tests/          # 测试
 ├── scripts/        # 脚本
-└── data/           # 运行时数据（知识库、简历、索引）
+└── data/           # 运行时数据（知识库、简历、索引、记忆画像）
 ```
 
 ## 技术栈与选型理由
