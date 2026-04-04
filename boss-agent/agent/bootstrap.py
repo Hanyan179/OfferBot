@@ -35,6 +35,10 @@ from tools.data.memory_tools import (
     GetUserCognitiveModelTool,
 )
 
+# Browser Tools
+from tools.browser.web_fetch import WebFetchTool
+from tools.browser.web_search import WebSearchTool
+
 
 def create_tool_registry() -> ToolRegistry:
     """创建 ToolRegistry 并注册所有已实现的 Tool。"""
@@ -60,6 +64,10 @@ def create_tool_registry() -> ToolRegistry:
     registry.register(DeleteMemoryTool())
     registry.register(ListMemoryCategoryTool())
     registry.register(GetUserCognitiveModelTool())
+
+    # --- Browser Tools ---
+    registry.register(WebFetchTool())
+    registry.register(WebSearchTool())
 
     return registry
 

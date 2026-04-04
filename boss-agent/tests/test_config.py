@@ -50,6 +50,26 @@ class TestConfigDefaults:
         cfg = Config()
         assert cfg.max_restore_messages == 200
 
+    def test_default_web_fetch_timeout(self):
+        cfg = Config()
+        assert cfg.web_fetch_timeout == 30
+
+    def test_default_web_fetch_max_content_length(self):
+        cfg = Config()
+        assert cfg.web_fetch_max_content_length == 50000
+
+    def test_default_web_fetch_cache_ttl(self):
+        cfg = Config()
+        assert cfg.web_fetch_cache_ttl == 900
+
+    def test_default_web_search_default_results(self):
+        cfg = Config()
+        assert cfg.web_search_default_results == 10
+
+    def test_default_web_search_api_key(self):
+        cfg = Config()
+        assert cfg.web_search_api_key == ""
+
     def test_config_is_frozen(self):
         cfg = Config()
         with pytest.raises(AttributeError):
@@ -111,6 +131,31 @@ class TestLoadConfig:
         monkeypatch.setenv("MAX_RESTORE_MESSAGES", "50")
         cfg = load_config()
         assert cfg.max_restore_messages == 50
+
+    def test_reads_web_fetch_timeout_from_env(self, monkeypatch):
+        monkeypatch.setenv("WEB_FETCH_TIMEOUT", "60")
+        cfg = load_config()
+        assert cfg.web_fetch_timeout == 60
+
+    def test_reads_web_fetch_max_content_length_from_env(self, monkeypatch):
+        monkeypatch.setenv("WEB_FETCH_MAX_CONTENT_LENGTH", "100000")
+        cfg = load_config()
+        assert cfg.web_fetch_max_content_length == 100000
+
+    def test_reads_web_fetch_cache_ttl_from_env(self, monkeypatch):
+        monkeypatch.setenv("WEB_FETCH_CACHE_TTL", "1800")
+        cfg = load_config()
+        assert cfg.web_fetch_cache_ttl == 1800
+
+    def test_reads_web_search_default_results_from_env(self, monkeypatch):
+        monkeypatch.setenv("WEB_SEARCH_DEFAULT_RESULTS", "5")
+        cfg = load_config()
+        assert cfg.web_search_default_results == 5
+
+    def test_reads_web_search_api_key_from_env(self, monkeypatch):
+        monkeypatch.setenv("WEB_SEARCH_API_KEY", "my-secret-key")
+        cfg = load_config()
+        assert cfg.web_search_api_key == "my-secret-key"
 
 
 class TestProjectRoot:

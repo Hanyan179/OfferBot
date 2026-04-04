@@ -69,6 +69,13 @@ class Config:
     skills_dir: str = str(PROJECT_ROOT / "skills")
     max_restore_messages: int = 200
 
+    # --- Web Tools ---
+    web_fetch_timeout: int = 30
+    web_fetch_max_content_length: int = 50000
+    web_fetch_cache_ttl: int = 900
+    web_search_default_results: int = 10
+    web_search_api_key: str = ""
+
 
 def load_config() -> Config:
     """从环境变量加载配置，缺失项使用默认值。"""
@@ -127,4 +134,10 @@ def load_config() -> Config:
         conversations_dir=_env("CONVERSATIONS_DIR", defaults.conversations_dir),
         skills_dir=_env("SKILLS_DIR", defaults.skills_dir),
         max_restore_messages=_env_int("MAX_RESTORE_MESSAGES", defaults.max_restore_messages),
+        # Web Tools
+        web_fetch_timeout=_env_int("WEB_FETCH_TIMEOUT", defaults.web_fetch_timeout),
+        web_fetch_max_content_length=_env_int("WEB_FETCH_MAX_CONTENT_LENGTH", defaults.web_fetch_max_content_length),
+        web_fetch_cache_ttl=_env_int("WEB_FETCH_CACHE_TTL", defaults.web_fetch_cache_ttl),
+        web_search_default_results=_env_int("WEB_SEARCH_DEFAULT_RESULTS", defaults.web_search_default_results),
+        web_search_api_key=_env("WEB_SEARCH_API_KEY", defaults.web_search_api_key),
     )

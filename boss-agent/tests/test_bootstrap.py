@@ -12,7 +12,7 @@ from agent.bootstrap import create_tool_registry, bootstrap
 from agent.tool_registry import ToolRegistry
 
 
-# Expected tool names from Phase 3 Data Tools
+# Expected tool names from Phase 3 Data Tools + Web Tools
 EXPECTED_TOOLS = {
     "save_job",
     "save_application",
@@ -22,6 +22,8 @@ EXPECTED_TOOLS = {
     "add_to_blacklist",
     "remove_from_blacklist",
     "export_csv",
+    "web_fetch",
+    "web_search",
 }
 
 
@@ -113,3 +115,35 @@ class TestBootstrap:
         result = bootstrap(mock_db, api_key="test-key")
 
         assert result["executor"].tool_registry is result["registry"]
+
+
+class TestWebToolsRegistration:
+    """验证 Web Tools（web_fetch / web_search）注册到 ToolRegistry。需求: 3.5"""
+
+    def test_web_fetch_registered(self):
+        reg = create_tool_registry()
+        assert reg.has_tool("web_fetch"), "web_fetch should be registered"
+
+    def test_web_search_registered(self):
+        reg = create_tool_registry()
+        assert reg.has_tool("web_search"), "web_search should be registered"
+
+    def test_web_fetch_category_is_browser(self):
+        reg = create_tool_registry()
+        tool = reg.get_tool("web_fetch")
+        assert tool is not None
+        assert tool.category == "browser"
+
+    def test_web_search_category_is_browser(self):
+        reg = create_tool_registry()
+        tool = reg.get_tool("web_search")
+        assert tool is not None
+        assert tool.category == "browser"
+
+    def test_get_tools_by_browser_category(self):
+        reg = create_tool_registry()
+        browser_tools = reg.get_tools_by_category("browser")
+        browser_names = {t.name for t in browser_tools}
+        assert {"web_fetch", "web_search"}.issubset(browser_names), (
+            f"Expected web_fetch and web_search in browser category, got {browser_names}"
+        )
