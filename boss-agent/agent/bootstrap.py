@@ -24,6 +24,17 @@ from tools.data.blacklist import AddToBlacklistTool, RemoveFromBlacklistTool
 from tools.data.export import ExportCSVTool
 from tools.data.user_profile import GetUserProfileTool, UpdateUserProfileTool
 
+# Memory Tools
+from tools.data.memory_tools import (
+    SaveMemoryTool,
+    GetMemoryTool,
+    SearchMemoryTool,
+    UpdateMemoryTool,
+    DeleteMemoryTool,
+    ListMemoryCategoryTool,
+    GetUserCognitiveModelTool,
+)
+
 
 def create_tool_registry() -> ToolRegistry:
     """创建 ToolRegistry 并注册所有已实现的 Tool。"""
@@ -40,6 +51,15 @@ def create_tool_registry() -> ToolRegistry:
     registry.register(ExportCSVTool())
     registry.register(GetUserProfileTool())
     registry.register(UpdateUserProfileTool())
+
+    # --- Memory Tools ---
+    registry.register(SaveMemoryTool())
+    registry.register(GetMemoryTool())
+    registry.register(SearchMemoryTool())
+    registry.register(UpdateMemoryTool())
+    registry.register(DeleteMemoryTool())
+    registry.register(ListMemoryCategoryTool())
+    registry.register(GetUserCognitiveModelTool())
 
     return registry
 

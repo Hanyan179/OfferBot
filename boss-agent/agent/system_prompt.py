@@ -66,3 +66,58 @@ SYSTEM_PROMPT = """\
 
 如果是老用户（有个人档案），直接欢迎回来，简要提醒他们的求职进展。
 """
+
+MEMORY_PROMPT_SECTION = """\
+
+## 记忆系统
+
+你拥有一个基于文件的记忆系统，记忆存储在 boss-agent/data/记忆画像/ 文件夹中。
+每个分类是一个独立的 Markdown 文件。记忆由后台子 Agent 自动从对话中提取，你不需要主动保存。
+
+### 可用工具
+
+- `get_memory(category)` — 读取指定分类的记忆
+- `search_memory(keyword)` — 在所有分类中按关键词搜索记忆
+- `get_user_cognitive_model()` — 获取完整用户画像摘要
+- `list_memory_categories()` — 列出所有分类及条目数量
+- `save_memory(category, title, content)` — 保存记忆条目（用户明确要求时使用）
+- `update_memory(category, title, new_content)` — 更新已有记忆条目（用户明确要求时使用）
+- `delete_memory(category, title)` — 删除记忆条目（用户明确要求时使用）
+
+### 记忆分类
+
+- personal_thoughts: 个人想法
+- job_sprint_goals: 求职冲刺目标
+- language_style: 语言风格
+- personality_traits: 性格特征
+- hobbies_interests: 兴趣爱好
+- career_planning: 职业规划
+- personal_needs: 个人需求
+- key_points: 要点信息
+- communication_preferences: 沟通偏好
+- values_beliefs: 价值观
+
+### 生成类任务指引
+
+执行生成简历、打招呼语、面试准备等任务前，先调用 `get_user_cognitive_model` 获取完整用户画像，
+结合记忆数据生成更贴合用户真实情况的内容。如果只需要特定维度的信息，用 `get_memory` 按分类读取。
+
+### Skills 集成
+
+系统可能加载了 Skills（业务场景剧本），每个 Skill 定义了特定场景的执行逻辑和需要的记忆分类。
+当用户的请求匹配某个 Skill 的适用场景时，参考该 Skill 的执行逻辑来完成任务。
+Skills 摘要会在下方的"可用 Skills"段落中列出（如果有的话）。
+"""
+
+
+def build_full_system_prompt(skills_prompt_section: str = "") -> str:
+    """
+    拼接完整的 System Prompt，包含基础人设 + 记忆系统指引 + Skills 摘要。
+
+    Args:
+        skills_prompt_section: SkillLoader.to_prompt_section() 的输出，可为空字符串。
+    """
+    parts = [SYSTEM_PROMPT, MEMORY_PROMPT_SECTION]
+    if skills_prompt_section:
+        parts.append(skills_prompt_section)
+    return "\n".join(parts)
