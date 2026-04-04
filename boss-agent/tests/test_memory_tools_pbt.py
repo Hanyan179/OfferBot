@@ -61,9 +61,11 @@ _printable_no_control = st.characters(
 )
 
 # 非空标题：单行，无 ## 和控制字符
+# 使用 .map(str.strip) 确保标题与 _parse_sections 中 line[3:].strip() 的结果一致
 st_title = (
     st.text(alphabet=_printable_no_control, min_size=1, max_size=60)
-    .filter(lambda s: s.strip())
+    .map(str.strip)
+    .filter(bool)
 )
 
 # 非空内容：可多行但不含 ## 和控制字符
