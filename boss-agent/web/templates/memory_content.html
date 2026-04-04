@@ -1,10 +1,50 @@
 <div class="page-header">
-  <h1>🧠 记忆画像</h1>
-  <p>AI 从对话中自动提取的用户认知模型，按分类组织。</p>
+  <h1>🧠 用户画像</h1>
+  <p>简历数据 + AI 从对话中自动提取的认知模型。</p>
 </div>
 
+<!-- ===== 简历概要 ===== -->
+<div class="card">
+  <h2 class="category-title">📄 简历信息</h2>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:14px;margin-bottom:16px;">
+    <div><span style="color:#86868b;">姓名：</span>{{ resume.name or '未填写' }}</div>
+    <div><span style="color:#86868b;">城市：</span>{{ resume.city or '未填写' }}</div>
+    <div><span style="color:#86868b;">经验：</span>{{ resume.experience or '未填写' }}</div>
+    <div><span style="color:#86868b;">学历：</span>{{ resume.education or '未填写' }}</div>
+  </div>
+
+  {% if resume.tech_stack %}
+  <div style="margin-bottom:16px;">
+    <h3 style="font-size:13px;font-weight:600;color:#86868b;margin-bottom:8px;">技术栈</h3>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;">
+      {% for skill in resume.tech_stack %}<span class="badge badge-blue">{{ skill }}</span>{% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if resume.work_experience %}
+  <div>
+    <h3 style="font-size:13px;font-weight:600;color:#86868b;margin-bottom:8px;">工作经历</h3>
+    {% for exp in resume.work_experience %}
+    <div style="padding:8px 0;border-bottom:1px solid rgba(0,0,0,.04);">
+      <div><strong>{{ exp.company }}</strong> · {{ exp.role }} <span style="font-size:12px;color:#86868b;">{{ exp.duration }}</span></div>
+      <p style="font-size:13px;color:#6e6e73;margin-top:4px;">{{ exp.description }}</p>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if not resume.name and not resume.tech_stack and not resume.work_experience %}
+  <div class="empty" style="padding:12px 0;">暂无简历数据，和 AI 对话或上传简历后会自动填充。</div>
+  {% endif %}
+</div>
+
+<!-- ===== 记忆画像分类 ===== -->
 {% if not categories %}
-<div class="empty">暂无记忆数据，和 AI 对话后会自动积累。</div>
+<div class="card">
+  <h2 class="category-title">💭 记忆画像</h2>
+  <div class="empty">暂无记忆数据，和 AI 对话后会自动积累。</div>
+</div>
 {% endif %}
 
 {% for cat in categories %}
@@ -16,7 +56,7 @@
   {% for entry in cat.entries %}
   <div class="memory-entry">
     <h3 class="entry-title">{{ entry.title }}</h3>
-    <div class="entry-body">{{ entry.body_html }}</div>
+    <div class="entry-body">{{ entry.body_html | safe }}</div>
     {% if entry.source_id or entry.extracted_at %}
     <div class="entry-meta">
       {% if entry.source_id %}
@@ -41,8 +81,11 @@ html.dark .category-title { border-bottom-color: rgba(255,255,255,.08); }
 html.dark .memory-entry { border-bottom-color: rgba(255,255,255,.04); }
 .memory-entry:last-child { border-bottom: none; padding-bottom: 0; }
 .entry-title { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
-.entry-body { font-size: 13px; line-height: 1.6; color: #444; white-space: pre-wrap; }
+.entry-body { font-size: 13px; line-height: 1.6; color: #444; }
+.entry-body a { color: #007aff; text-decoration: none; }
+.entry-body a:hover { text-decoration: underline; }
 html.dark .entry-body { color: #bbb; }
+html.dark .entry-body a { color: #0a84ff; }
 .entry-meta { margin-top: 8px; display: flex; gap: 14px; font-size: 11px; color: #86868b; }
 .meta-source { cursor: default; }
 </style>

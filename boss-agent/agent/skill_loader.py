@@ -18,7 +18,7 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
-SKILLS_DIR = "boss-agent/skills"
+SKILLS_DIR = str(Path(__file__).resolve().parent.parent / "skills")
 
 
 def _parse_frontmatter(content: str) -> tuple[dict[str, Any], str]:

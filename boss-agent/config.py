@@ -57,7 +57,7 @@ class Config:
     tool_max_retries: int = 3
 
     # --- Gradio ---
-    gradio_host: str = "0.0.0.0"
+    gradio_host: str = "127.0.0.1"
     gradio_port: int = 7860
 
     # --- 打招呼语 ---

@@ -23,7 +23,7 @@ from typing import Any
 
 from agent.tool_registry import Tool
 
-MEMORY_DIR = "boss-agent/data/记忆画像"
+MEMORY_DIR = str(Path(__file__).resolve().parent.parent.parent / "data" / "记忆画像")
 
 # 预定义分类 → 文件名映射
 CATEGORY_FILE_MAP: dict[str, str] = {

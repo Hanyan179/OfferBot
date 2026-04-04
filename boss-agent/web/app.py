@@ -83,18 +83,25 @@ async def _load_active_resume(db: Database) -> dict:
     rows = await db.execute(
         "SELECT * FROM resumes WHERE is_active = 1 ORDER BY id DESC LIMIT 1"
     )
+    empty = {
+        "name": None, "city": None, "experience": None, "education": None,
+        "school": None, "major": None, "current_company": None, "current_role": None,
+        "summary": None, "self_evaluation": None,
+        "tech_stack": [], "tech_stack_grouped": {},
+        "work_experience": [], "projects": [], "highlights": [],
+        "job_preferences": None,
+    }
     if not rows:
-        return {"name": None, "city": None, "experience": None, "education": None, "tech_stack": [], "work_experience": []}
+        return empty
 
     row = rows[0]
-    # Build experience string from years_of_experience
     years = row.get("years_of_experience")
     experience_str = f"{years}年" if years is not None else row.get("current_role")
 
     # Parse JSON fields
     skills_flat = _safe_json_load(row.get("skills_flat")) or []
     tech_stack_dict = _safe_json_load(row.get("tech_stack"))
-    # Flatten tech_stack dict into a list if it's a dict, otherwise use skills_flat
+    tech_stack_grouped = tech_stack_dict if isinstance(tech_stack_dict, dict) else {}
     if isinstance(tech_stack_dict, dict):
         tech_list = []
         for skills in tech_stack_dict.values():
@@ -113,15 +120,64 @@ async def _load_active_resume(db: Database) -> dict:
                 "role": exp.get("role", ""),
                 "duration": exp.get("duration", ""),
                 "description": exp.get("description", ""),
+                "highlights": exp.get("highlights", []),
+                "tech_stack": exp.get("tech_stack", ""),
             })
+
+    projects_raw = _safe_json_load(row.get("projects")) or []
+    projects = []
+    for proj in projects_raw:
+        if isinstance(proj, dict):
+            projects.append({
+                "name": proj.get("name", ""),
+                "description": proj.get("description", ""),
+                "tech_stack": proj.get("tech_stack", ""),
+                "highlights": proj.get("highlights", []),
+            })
+
+    highlights = _safe_json_load(row.get("highlights")) or []
+
+    # 求职意向
+    resume_id = row.get("id")
+    job_preferences = None
+    if resume_id:
+        pref_rows = await db.execute(
+            "SELECT * FROM job_preferences WHERE resume_id = ? AND is_active = 1 LIMIT 1",
+            (resume_id,),
+        )
+        if pref_rows:
+            p = pref_rows[0]
+            target_cities = _safe_json_load(p.get("target_cities")) or []
+            target_roles = _safe_json_load(p.get("target_roles")) or []
+            priorities = _safe_json_load(p.get("priorities")) or []
+            deal_breakers = _safe_json_load(p.get("deal_breakers")) or []
+            job_preferences = {
+                "target_cities": target_cities,
+                "target_roles": target_roles,
+                "salary_min": p.get("salary_min"),
+                "salary_max": p.get("salary_max"),
+                "work_type": p.get("work_type"),
+                "priorities": priorities,
+                "deal_breakers": deal_breakers,
+            }
 
     return {
         "name": row.get("name"),
         "city": row.get("city"),
         "experience": experience_str,
         "education": row.get("education_level"),
+        "school": row.get("school"),
+        "major": row.get("education_major"),
+        "current_company": row.get("current_company"),
+        "current_role": row.get("current_role"),
+        "summary": row.get("summary"),
+        "self_evaluation": row.get("self_evaluation"),
         "tech_stack": tech_stack,
+        "tech_stack_grouped": tech_stack_grouped,
         "work_experience": work_experience,
+        "projects": projects,
+        "highlights": highlights,
+        "job_preferences": job_preferences,
     }
 
 
@@ -376,6 +432,17 @@ async def page_overview(request: Request):
     })
 
 
+def _render_md(text: str) -> str:
+    """将 Markdown 文本渲染为 HTML（链接可点击、列表等格式化）。"""
+    try:
+        import markdown
+        return markdown.markdown(text, extensions=["tables", "fenced_code"])
+    except ImportError:
+        # fallback: 至少把 URL 变成可点击链接
+        import re as _re
+        return _re.sub(r'(https?://\S+)', r'<a href="\1" target="_blank">\1</a>', text.replace("\n", "<br>"))
+
+
 def _parse_memory_files(memory_dir: Path) -> list[dict]:
     """读取记忆画像文件夹下所有 .md 文件，解析为模板数据。"""
     categories = []
@@ -418,7 +485,7 @@ def _parse_memory_files(memory_dir: Path) -> list[dict]:
 
             entries.append({
                 "title": title,
-                "body_html": "\n".join(body_lines).strip(),
+                "body_html": _render_md("\n".join(body_lines).strip()),
                 "source_id": source_id,
                 "extracted_at": extracted_at,
             })
@@ -430,11 +497,13 @@ def _parse_memory_files(memory_dir: Path) -> list[dict]:
 
 @app.get("/page/memory", response_class=HTMLResponse)
 async def page_memory(request: Request):
+    db = await _get_db()
+    resume = await _load_active_resume(db)
     memory_dir = _project_root / "data" / "记忆画像"
     categories = _parse_memory_files(memory_dir)
     return templates.TemplateResponse(request, "embed_wrap.html", {
-        "title": "记忆画像", "content_template": "memory_content.html",
-        "categories": categories,
+        "title": "用户画像", "content_template": "memory_content.html",
+        "resume": resume, "categories": categories,
     })
 
 

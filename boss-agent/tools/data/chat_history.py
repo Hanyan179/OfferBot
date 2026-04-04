@@ -17,7 +17,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-CONVERSATIONS_DIR = "boss-agent/data/conversations"
+CONVERSATIONS_DIR = str(Path(__file__).resolve().parent.parent.parent / "data" / "conversations")
 
 
 class ChatHistoryStore:

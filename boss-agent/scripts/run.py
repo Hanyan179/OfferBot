@@ -8,7 +8,6 @@ Boss Agent 主入口脚本
 """
 
 import logging
-import subprocess
 import sys
 from pathlib import Path
 
@@ -36,14 +35,12 @@ def main() -> None:
     logger.info("Boss Agent 启动中 ...")
     logger.info("地址: http://%s:%s", cfg.gradio_host, cfg.gradio_port)
 
-    web_dir = Path(__file__).resolve().parent.parent / "web"
-    subprocess.run(
-        [
-            sys.executable, "-m", "chainlit", "run", "app.py",
-            "--host", cfg.gradio_host,
-            "--port", str(cfg.gradio_port),
-        ],
-        cwd=str(web_dir),
+    import uvicorn
+    uvicorn.run(
+        "web.app:app",
+        host=cfg.gradio_host,
+        port=cfg.gradio_port,
+        log_level=cfg.log_level.lower(),
     )
 
 

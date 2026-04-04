@@ -126,6 +126,7 @@ async def on_chat_start():
 
     # 尝试恢复上次会话
     active_conv_id = await chat_store.get_active_conversation_id()
+    restored_messages = []
     if active_conv_id:
         conv_id = active_conv_id
         restored = await chat_store.load_history(conv_id)
@@ -133,6 +134,8 @@ async def on_chat_start():
             # 恢复对话历史到 chat_history（只保留 role + content）
             history = [{"role": m["role"], "content": m["content"]} for m in restored if m.get("role") in ("user", "assistant", "system")]
             cl.user_session.set("chat_history", history)
+            # 收集需要在 UI 上展示的历史消息
+            restored_messages = [m for m in restored if m.get("role") in ("user", "assistant")]
     else:
         conv_id = await chat_store.create_conversation()
 
@@ -179,6 +182,16 @@ async def on_chat_start():
             "⚙️ 请先点击顶部导航栏的「设置」配置 API Key，保存后会自动回到对话。"
         ).send()
     else:
+        # --- 在 Chainlit UI 上恢复历史对话消息 ---
+        if restored_messages:
+            for msg in restored_messages:
+                role = msg.get("role", "")
+                content = msg.get("content", "")
+                if role == "user":
+                    await cl.Message(content=content, author="user", type="user_message").send()
+                elif role == "assistant":
+                    await cl.Message(content=content).send()
+
         # 已配置 — 查用户档案，固定开场白 + 上下文注入
         profile_rows = await db.execute(
             "SELECT name, city, current_role, years_of_experience FROM resumes WHERE is_active = 1 LIMIT 1"
@@ -401,6 +414,7 @@ def _launch_memory_extraction(history: list[dict], conversation_id: str) -> None
     try:
         executor = cl.user_session.get("executor")
         if executor is None:
+            logger.warning("🧠 无法启动记忆提取: executor 为 None")
             return
         llm_client = executor._llm
 
@@ -412,14 +426,17 @@ def _launch_memory_extraction(history: list[dict], conversation_id: str) -> None
 
         context = {"conversation_id": conversation_id}
 
+        logger.info("🧠 启动记忆提取任务，最近消息数: %d", len(recent))
         asyncio.create_task(_run_extraction(extractor, recent, context))
     except Exception as e:
-        logger.warning("启动记忆提取失败: %s", e)
+        logger.error("🧠 启动记忆提取失败: %s", e, exc_info=True)
 
 
 async def _run_extraction(extractor, messages: list[dict], context: dict) -> None:
     """运行记忆提取，捕获所有异常避免影响主线程。"""
     try:
+        logger.info("🧠 开始记忆提取，消息数: %d, 会话: %s", len(messages), context.get("conversation_id", "?"))
         await extractor.extract(messages, context)
+        logger.info("🧠 记忆提取完成")
     except Exception as e:
-        logger.warning("记忆提取执行失败: %s", e)
+        logger.error("🧠 记忆提取执行失败: %s", e, exc_info=True)

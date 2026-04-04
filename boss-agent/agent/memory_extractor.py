@@ -162,14 +162,18 @@ class MemoryExtractor:
                     tools=tools,
                 )
             except Exception as e:
-                logger.error("MemoryExtractor LLM 调用失败: %s", e)
+                logger.error("MemoryExtractor LLM 调用失败: %s", e, exc_info=True)
                 return
 
             tool_calls = response.tool_calls or []
 
             # 没有工具调用 → 提取完成
             if not tool_calls:
+                text = response.content or ""
+                logger.info("MemoryExtractor 第 %d 轮: 无工具调用，提取结束。LLM 回复: %s", turn + 1, text[:200] if text else "(空)")
                 return
+
+            logger.info("MemoryExtractor 第 %d 轮: %d 个工具调用", turn + 1, len(tool_calls))
 
             # 把 assistant 消息（含 tool_calls）加入历史
             assistant_msg: dict[str, Any] = {"role": "assistant"}
@@ -207,6 +211,7 @@ class MemoryExtractor:
                     tool_args["source_conversation_id"] = conversation_id
 
                 result = await self._execute_tool(tool_name, tool_args, ctx)
+                logger.info("MemoryExtractor 工具 '%s' 执行结果: %s", tool_name, str(result)[:200])
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tc.id,
