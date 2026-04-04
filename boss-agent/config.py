@@ -63,6 +63,12 @@ class Config:
     # --- 打招呼语 ---
     greeting_max_length: int = 200
 
+    # --- 记忆系统 ---
+    memory_dir: str = str(PROJECT_ROOT / "data" / "记忆画像")
+    conversations_dir: str = str(PROJECT_ROOT / "data" / "conversations")
+    skills_dir: str = str(PROJECT_ROOT / "skills")
+    max_restore_messages: int = 200
+
 
 def load_config() -> Config:
     """从环境变量加载配置，缺失项使用默认值。"""
@@ -116,4 +122,9 @@ def load_config() -> Config:
         gradio_port=_env_int("GRADIO_PORT", defaults.gradio_port),
         # 打招呼语
         greeting_max_length=_env_int("GREETING_MAX_LENGTH", defaults.greeting_max_length),
+        # 记忆系统
+        memory_dir=_env("MEMORY_DIR", defaults.memory_dir),
+        conversations_dir=_env("CONVERSATIONS_DIR", defaults.conversations_dir),
+        skills_dir=_env("SKILLS_DIR", defaults.skills_dir),
+        max_restore_messages=_env_int("MAX_RESTORE_MESSAGES", defaults.max_restore_messages),
     )

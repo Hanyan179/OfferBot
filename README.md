@@ -171,17 +171,22 @@ boss-agent/
 └── data/           # 运行时数据（知识库、简历、索引）
 ```
 
-## 技术栈
+## 技术栈与选型理由
 
-| 层 | 技术 |
+| 技术 | 为什么用 |
 |---|---|
-| 语言 | Python 3.11+ |
-| Agent | 自建 Agent Loop |
-| LLM | OpenAI SDK（兼容多厂商） |
-| UI | FastAPI + Chainlit |
-| 浏览器 | Playwright |
-| 向量检索 | FAISS + BM25 + RRF |
-| 数据库 | SQLite + aiosqlite |
+| **自建 Agent Loop** | 用户说一句话，模型自己决定调哪些工具、按什么顺序执行——求职场景的任务链不固定，需要 LLM 动态决策 |
+| **OpenAI SDK** | 统一接口兼容多家 LLM（阿里云/OpenAI/Gemini/DeepSeek），用户按预算和效果自己选 |
+| **RAG（FAISS + BM25 + Rerank）** | 用户的简历、项目经验放进知识库，Agent 分析匹配度时检索这些内容来对比 JD，不是把整份简历塞进 prompt |
+| **Playwright** | 招聘平台没有开放 API，只能通过浏览器自动化抓取岗位数据 |
+| **SQLite** | 单用户本地工具，岗位数据、投递记录、用户档案都存本地，不需要服务端数据库 |
+| **FastAPI + Chainlit** | FastAPI 做 API 和页面路由，Chainlit 做对话 UI（流式输出、Markdown、工具调用展示） |
+
+## OpenClaw 集成
+
+OfferBot 也可以作为 [OpenClaw](https://github.com/openclaw/openclaw) 的 Skill 运行，通过你已有的消息渠道（WhatsApp、Telegram、Slack 等）使用求职顾问功能。
+
+> 🚧 OpenClaw 集成方案正在开发中，后续会提供详细的接入指南。
 
 ## 路线图
 

@@ -34,6 +34,22 @@ class TestConfigDefaults:
         )
         assert abs(total - 1.0) < 1e-9
 
+    def test_default_memory_dir(self):
+        cfg = Config()
+        assert cfg.memory_dir.endswith("记忆画像")
+
+    def test_default_conversations_dir(self):
+        cfg = Config()
+        assert cfg.conversations_dir.endswith("conversations")
+
+    def test_default_skills_dir(self):
+        cfg = Config()
+        assert cfg.skills_dir.endswith("skills")
+
+    def test_default_max_restore_messages(self):
+        cfg = Config()
+        assert cfg.max_restore_messages == 200
+
     def test_config_is_frozen(self):
         cfg = Config()
         with pytest.raises(AttributeError):
@@ -75,6 +91,26 @@ class TestLoadConfig:
         cfg = load_config()
         assert cfg.log_level == "INFO"
         assert cfg.dashscope_api_key == ""
+
+    def test_reads_memory_dir_from_env(self, monkeypatch):
+        monkeypatch.setenv("MEMORY_DIR", "/tmp/mem")
+        cfg = load_config()
+        assert cfg.memory_dir == "/tmp/mem"
+
+    def test_reads_conversations_dir_from_env(self, monkeypatch):
+        monkeypatch.setenv("CONVERSATIONS_DIR", "/tmp/conv")
+        cfg = load_config()
+        assert cfg.conversations_dir == "/tmp/conv"
+
+    def test_reads_skills_dir_from_env(self, monkeypatch):
+        monkeypatch.setenv("SKILLS_DIR", "/tmp/skills")
+        cfg = load_config()
+        assert cfg.skills_dir == "/tmp/skills"
+
+    def test_reads_max_restore_messages_from_env(self, monkeypatch):
+        monkeypatch.setenv("MAX_RESTORE_MESSAGES", "50")
+        cfg = load_config()
+        assert cfg.max_restore_messages == 50
 
 
 class TestProjectRoot:
