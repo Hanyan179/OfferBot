@@ -3,11 +3,17 @@ Chainlit 对话逻辑（挂载到 /chat）
 
 接入 Agent Core：用户消息 → Planner → Executor → Step 展示工具调用
 LLM 配置从 /settings 页面管理，保存在 SQLite user_preferences 表中。
+
+集成记忆系统：
+- on_chat_start: 恢复对话历史 + 加载记忆画像 + Skills 注入 system prompt
+- handle_user_message: 消息持久化到 JSONL + 异步记忆提取
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import sys
 from pathlib import Path
 
@@ -20,6 +26,12 @@ if str(_project_root) not in sys.path:
 from config import load_config
 from db.database import Database
 from agent.bootstrap import bootstrap
+from tools.data.chat_history import ChatHistoryStore
+from tools.data.memory_tools import GetUserCognitiveModelTool
+from agent.skill_loader import SkillLoader
+from agent.system_prompt import build_full_system_prompt
+
+logger = logging.getLogger(__name__)
 
 SCENARIO_CARDS: list[dict[str, str]] = [
     {"emoji": "🔍", "title": "搜索岗位", "prompt": "帮我搜索上海 AI 岗位"},
@@ -108,6 +120,41 @@ async def on_chat_start():
     await db.init_schema()
     cl.user_session.set("db", db)
 
+    # --- 初始化 ChatHistoryStore ---
+    chat_store = ChatHistoryStore()
+    cl.user_session.set("chat_store", chat_store)
+
+    # 尝试恢复上次会话
+    active_conv_id = await chat_store.get_active_conversation_id()
+    if active_conv_id:
+        conv_id = active_conv_id
+        restored = await chat_store.load_history(conv_id)
+        if restored:
+            # 恢复对话历史到 chat_history（只保留 role + content）
+            history = [{"role": m["role"], "content": m["content"]} for m in restored if m.get("role") in ("user", "assistant", "system")]
+            cl.user_session.set("chat_history", history)
+    else:
+        conv_id = await chat_store.create_conversation()
+
+    cl.user_session.set("conversation_id", conv_id)
+
+    # --- 加载记忆画像摘要 ---
+    memory_summary = ""
+    try:
+        cognitive_tool = GetUserCognitiveModelTool()
+        result = await cognitive_tool.execute({}, {})
+        memory_summary = result.get("cognitive_model", "")
+    except Exception as e:
+        logger.warning("加载记忆画像失败: %s", e)
+
+    # --- 加载 Skills 摘要 ---
+    skill_loader = SkillLoader()
+    skills_section = skill_loader.to_prompt_section()
+
+    # --- 构建完整 System Prompt（基础 + 记忆指引 + Skills） ---
+    full_system_prompt = build_full_system_prompt(skills_prompt_section=skills_section)
+    cl.user_session.set("system_prompt", full_system_prompt)
+
     # 尝试从数据库读取 LLM 配置
     llm_config = await _load_llm_config(db)
 
@@ -160,8 +207,23 @@ async def on_chat_start():
                 "role": "system",
                 "content": f"[用户档案] {profile_context}",
             })
+            # 注入记忆画像摘要到 system 上下文
+            if memory_summary:
+                history.insert(1, {
+                    "role": "system",
+                    "content": f"[用户记忆画像]\n{memory_summary}",
+                })
             cl.user_session.set("chat_history", history)
         else:
+            # 无档案时也注入记忆画像（如果有）
+            if memory_summary:
+                history = cl.user_session.get("chat_history", [])
+                history.insert(0, {
+                    "role": "system",
+                    "content": f"[用户记忆画像]\n{memory_summary}",
+                })
+                cl.user_session.set("chat_history", history)
+
             welcome = (
                 "## 👋 你好，我是 OfferBot\n\n"
                 "我是你的 AI 求职顾问，从认识你自己到拿到 offer，全程陪你。\n\n"
@@ -253,7 +315,17 @@ async def handle_user_message(content: str):
         ).send()
         return
 
+    # --- 持久化用户消息到 JSONL ---
+    chat_store: ChatHistoryStore | None = cl.user_session.get("chat_store")
+    conv_id: str | None = cl.user_session.get("conversation_id")
+    if chat_store and conv_id:
+        try:
+            await chat_store.save_message(conv_id, "user", content)
+        except Exception as e:
+            logger.warning("持久化用户消息失败: %s", e)
+
     executor = cl.user_session.get("executor")
+    system_prompt = cl.user_session.get("system_prompt")
 
     # 用对话历史直接调 Executor.chat()
     # LLM 自己决定是纯回复、调工具、还是两者同时
@@ -261,7 +333,7 @@ async def handle_user_message(content: str):
     assistant_text = ""
     db = cl.user_session.get("db")
 
-    async for event in executor.chat(messages=history, context={"db": db}):
+    async for event in executor.chat(messages=history, context={"db": db}, system_prompt=system_prompt):
         if event.type == "thinking":
             # 思考过程 — 折叠展示
             thinking_text = event.data.get("content", "")
@@ -309,4 +381,45 @@ async def handle_user_message(content: str):
     # 记录 assistant 回复到历史
     if assistant_text:
         history.append({"role": "assistant", "content": assistant_text})
+
+        # --- 持久化 assistant 回复到 JSONL ---
+        if chat_store and conv_id:
+            try:
+                await chat_store.save_message(conv_id, "assistant", assistant_text)
+            except Exception as e:
+                logger.warning("持久化 assistant 消息失败: %s", e)
+
     cl.user_session.set("chat_history", history)
+
+    # --- 异步启动记忆提取（不阻塞主线程） ---
+    if assistant_text and conv_id:
+        _launch_memory_extraction(history, conv_id)
+
+
+def _launch_memory_extraction(history: list[dict], conversation_id: str) -> None:
+    """异步启动 MemoryExtractor，不阻塞主对话线程。"""
+    try:
+        executor = cl.user_session.get("executor")
+        if executor is None:
+            return
+        llm_client = executor._llm
+
+        from agent.memory_extractor import MemoryExtractor
+        extractor = MemoryExtractor(llm_client=llm_client)
+
+        # 只传最近的消息给提取器（最多最近 10 条 user/assistant 消息）
+        recent = [m for m in history if m.get("role") in ("user", "assistant")][-10:]
+
+        context = {"conversation_id": conversation_id}
+
+        asyncio.create_task(_run_extraction(extractor, recent, context))
+    except Exception as e:
+        logger.warning("启动记忆提取失败: %s", e)
+
+
+async def _run_extraction(extractor, messages: list[dict], context: dict) -> None:
+    """运行记忆提取，捕获所有异常避免影响主线程。"""
+    try:
+        await extractor.extract(messages, context)
+    except Exception as e:
+        logger.warning("记忆提取执行失败: %s", e)

@@ -1,6 +1,6 @@
 # 🤖 OfferBot
 
-**AI 求职顾问 Agent — 不是聊天机器人，是真正帮你完成求职任务的工具。**
+**AI 求职顾问 Agent — 帮你看清自己的技能、理解市场需求、找到匹配的方向。**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/)
@@ -13,58 +13,58 @@
 
 我自己在找 AI 方向的工作。
 
-说实话，定位很模糊。Vibe coding 了一段时间，写了不少东西，但"我到底适合什么岗位"这个问题一直没想清楚。每天刷招聘平台，看各种 JD 描述，非常消耗精力——技能要求一大堆，有些听过没用过，有些用过但不知道怎么写到简历里。
+Vibe coding 了一段时间，写了不少东西，但"我到底适合什么岗位"这个问题一直没想清楚。每天刷招聘平台，看各种 JD，非常消耗精力——技能要求一大堆，有些听过没用过，有些用过但不知道怎么写到简历里。
 
 然后我开始想：
 
-- **JD 那么多，能不能让 AI 帮我筛？** 匹配度高的才看，不浪费时间
-- **简历该怎么写？** 新时代的简历应该是什么样的，我不想手动一个个改
-- **打招呼语千篇一律，能不能个性化生成？**
+- **我到底掌握了什么？** 能不能让 AI 帮我梳理清楚
+- **市场到底需要什么？** JD 那么多，能不能自动筛选和分析
+- **哪些岗位真正适合我？** 不是海投，是精准匹配
+- **简历该怎么写？** 新时代的简历应该是什么样的
 - **投递记录散落各处，能不能统一追踪？**
 
-手动做这些事太累了。我本身有另一个项目在做，但那个产品的架构不适合为了技术而技术地塞进 RAG、Agent 这些东西。所以我开了这个新项目——既解决自己的求职问题，又把想实践的技术（Agent Loop、RAG Pipeline、浏览器自动化）真正动手写一遍。
+手动做这些事太累了。我本身有另一个项目在做，但那个产品的架构不适合硬塞 RAG、Agent 这些技术。所以开了这个新项目——既解决自己的求职问题，又把想实践的技术真正动手写一遍。
 
 **OfferBot 就是这么来的：一个求职者给自己写的工具。**
 
 ## 这是什么
 
-OfferBot 是一个执行型 AI Agent，覆盖求职全流程。你告诉它你想找什么工作，它帮你搜索、分析、匹配、投递、追踪。
+OfferBot 是一个 AI Agent，帮你分析自身技能、理解市场需求、匹配合适岗位、管理求职流程。
 
-核心理念：**模型是大脑，我们开发的是手脚（Tools）和记忆（数据库）。**
+本质上做的是一件事：**让你看清自己和市场之间的关系。**
 
 ```
 你："帮我找上海 AI 应用开发的岗位，30-50K"
 
-OfferBot 自动执行：
+OfferBot 执行：
   1. 搜索岗位 → 抓取列表
-  2. 解析 JD → 提取技能/经验/职责
-  3. 匹配简历 → Embedding + LLM 评分
-  4. 生成打招呼语 → 个性化
-  5. 自动投递 → 记录结果
-  6. 输出报告 → "已投递 X 个，匹配度最高的是 XXX"
+  2. 解析 JD → 提取技能要求、经验要求、岗位职责
+  3. 对比简历 → 分析匹配度，指出差距和优势
+  4. 推荐岗位 → 按匹配度排序
+  5. 投递 + 记录 → 追踪进度
 ```
 
 ## 特性
 
-- **ReAct Agent 架构** — 参考 Claude Code 的 Agent Loop 设计，LLM 动态决策 + 工具调用，不用 LangChain/LangGraph
-- **多 LLM 支持** — OpenAI 兼容格式，通过 `base_url` 切换：阿里云 DashScope / OpenAI / Google Gemini / DeepSeek
+- **Agent 架构** — ReAct 模式，LLM 动态决策 + 工具调用
+- **多 LLM 支持** — OpenAI 兼容格式，支持阿里云 DashScope / OpenAI / Google Gemini / DeepSeek
 - **RAG 知识库** — FAISS 向量检索 + BM25 关键词检索 + RRF 融合 + Rerank
-- **浏览器自动化** — Playwright 驱动，反检测策略，支持 Boss 直聘等平台（开发中）
-- **单页面 Web UI** — 对话驱动 + 岗位管理 + 简历管理 + 面试追踪 + 徽章墙
-- **Tool 可扩展** — 继承 `Tool` 基类，4 步注册，模型自动调用（[开发指南](docs/tool-development.md)）
-- **全本地存储** — SQLite，数据不上传云端
+- **浏览器自动化** — Playwright 驱动，支持 Boss 直聘等平台（开发中）
+- **Web UI** — 对话 + 岗位管理 + 简历管理 + 面试追踪
+- **Tool 可扩展** — 继承基类，注册即用（[开发指南](docs/tool-development.md)）
+- **本地存储** — SQLite，数据不上传
 
 ## 架构
 
 ```
 用户对话 → Executor.chat() → LLM（function calling）
                                 ↓
-                        模型自己决定：
-                        ├── 纯文本回复（聊天）
-                        ├── 调用工具（操作数据）
-                        └── 文本 + 工具（边聊边存）
+                        模型决定下一步：
+                        ├── 直接回复
+                        ├── 调用工具
+                        └── 回复 + 调用工具
                                 ↓
-                        工具结果 → 再调 LLM → 直到只回复文本
+                        工具结果 → 再调 LLM → 直到完成
 ```
 
 ```
@@ -75,8 +75,7 @@ OfferBot 自动执行：
                    │
 ┌──────────────────▼──────────────────────────┐
 │              Agent Core                      │
-│  Executor (Agent Loop) + Planner + Memory    │
-│  LLM Client (OpenAI 兼容, 多厂商切换)        │
+│  Executor + Planner + Memory + LLM Client    │
 └──────────────────┬──────────────────────────┘
                    │
 ┌──────────────────▼──────────────────────────┐
@@ -86,7 +85,7 @@ OfferBot 自动执行：
                    │
 ┌──────────────────▼──────────────────────────┐
 │              Storage                         │
-│  SQLite (WAL) │ FAISS 向量索引 │ 知识库文档  │
+│  SQLite │ FAISS 向量索引 │ 知识库文档         │
 └─────────────────────────────────────────────┘
 ```
 
@@ -138,7 +137,7 @@ export DASHSCOPE_LLM_MODEL="gemini-2.0-flash"
 | Tool | 说明 |
 |------|------|
 | `get_user_profile` | 获取用户档案 |
-| `update_user_profile` | 更新用户档案（对话中静默调用） |
+| `update_user_profile` | 更新用户档案 |
 | `save_job` | 保存岗位数据 |
 | `save_application` | 记录投递 |
 | `get_stats` | 投递统计 |
@@ -149,7 +148,7 @@ export DASHSCOPE_LLM_MODEL="gemini-2.0-flash"
 
 ### 开发中
 
-- AI 分析：JD 解析、简历匹配、打招呼语生成
+- AI 分析：JD 解析、简历匹配
 - RAG：知识库检索
 - 浏览器：岗位搜索、详情抓取、自动投递
 
@@ -164,7 +163,7 @@ boss-agent/
 ├── rag/            # RAG Pipeline（Embedding, 索引, 检索, Rerank）
 ├── tools/          # Tool 层
 │   ├── data/       #   数据操作（岗位、投递、统计、黑名单）
-│   ├── ai/         #   AI 分析（JD 解析、匹配、打招呼语）
+│   ├── ai/         #   AI 分析（JD 解析、匹配）
 │   └── browser/    #   浏览器自动化（搜索、投递）
 ├── web/            # Web UI（FastAPI + Chainlit）
 ├── tests/          # 测试
@@ -177,7 +176,7 @@ boss-agent/
 | 层 | 技术 |
 |---|---|
 | 语言 | Python 3.11+ |
-| Agent | 自建 Agent Loop（参考 Claude Code） |
+| Agent | 自建 Agent Loop |
 | LLM | OpenAI SDK（兼容多厂商） |
 | UI | FastAPI + Chainlit |
 | 浏览器 | Playwright |

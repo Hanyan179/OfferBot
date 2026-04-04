@@ -98,6 +98,7 @@ class Executor:
         messages: list[dict],
         context: dict[str, Any] | None = None,
         max_turns: int = 10,
+        system_prompt: str | None = None,
     ) -> AsyncGenerator[AgentEvent, None]:
         """
         对话模式 Agent Loop — 参考 Claude Code 的 queryLoop()。
@@ -109,18 +110,21 @@ class Executor:
             messages: OpenAI 格式的对话历史
             context: Agent 上下文（db 等资源）
             max_turns: 最大工具调用轮数（防止无限循环）
+            system_prompt: 自定义 system prompt（为 None 时使用默认）
 
         Yields:
             AgentEvent 给 UI 层实时展示
         """
-        from agent.system_prompt import SYSTEM_PROMPT
+        if system_prompt is None:
+            from agent.system_prompt import SYSTEM_PROMPT
+            system_prompt = SYSTEM_PROMPT
 
         # 构建工具定义
         tools = self._registry.get_all_schemas() if self._registry else []
 
         # 构建完整消息列表（system prompt + 对话历史）
         full_messages: list[dict] = [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             *messages,
         ]
 
