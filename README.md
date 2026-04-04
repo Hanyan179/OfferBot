@@ -54,7 +54,6 @@ OfferBot 执行：
 - **浏览器自动化** — Playwright 驱动，支持 Boss 直聘等平台（开发中）
 - **Web UI** — 对话 + 岗位管理 + 简历管理 + 面试追踪
 - **Tool 可扩展** — 继承基类，注册即用（[开发指南](docs/tool-development.md)）
-- **本地存储** — SQLite + Markdown 记忆文件 + JSONL 对话历史，数据不上传
 
 ## 架构
 
