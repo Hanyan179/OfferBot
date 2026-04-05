@@ -702,18 +702,14 @@ class TestListMemoryCategoriesCount:
         data: list[tuple[str, list[tuple[str, str]]]],
     ):
         """
-        Property 7: list_memory_categories 返回的每个分类条目数等于文件中 ## 标题的实际数量。
+        Property 7: list_memory_categories 返回的每个分类条目数 ≤ 保存次数。
+        （因为 save_memory 有模糊去重，相似标题会被合并替换。）
         """
         save_tool = SaveMemoryTool()
         list_tool = ListMemoryCategoryTool()
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             context = {"memory_dir": tmp_dir}
-
-            # Build expected counts
-            expected: dict[str, int] = {}
-            for category, entries in data:
-                expected[category] = len(entries)
 
             async def _run():
                 for category, entries in data:
@@ -727,9 +723,10 @@ class TestListMemoryCategoriesCount:
             result = _run_async(_run())
             actual = {c["category"]: c["entries"] for c in result["categories"]}
 
-            for category, count in expected.items():
-                assert actual.get(category) == count, (
-                    f"分类 '{category}' 期望 {count} 条，实际 {actual.get(category)}"
+            for category, entries in data:
+                count = actual.get(category, 0)
+                assert 1 <= count <= len(entries), (
+                    f"分类 '{category}' 保存 {len(entries)} 条，实际 {count} 条"
                 )
 
     @given(

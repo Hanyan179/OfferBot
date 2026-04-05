@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from chainlit.utils import mount_chainlit
 
@@ -25,12 +25,13 @@ if str(_project_root) not in sys.path:
 
 from config import load_config
 from db.database import Database
+from web.resume_service import ResumeService
 
 app = FastAPI(title="Boss Agent")
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 PROVIDER_PRESETS = {
-    "dashscope": {"base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "model": "qwen3.5-flash"},
+    "dashscope": {"base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "model": "qwen3.6-plus"},
     "openai": {"base_url": "https://api.openai.com/v1", "model": "gpt-4o"},
     "gemini": {"base_url": "https://generativelanguage.googleapis.com/v1beta/openai/", "model": "gemini-2.5-flash"},
     "deepseek": {"base_url": "https://api.deepseek.com/v1", "model": "deepseek-chat"},
@@ -437,14 +438,33 @@ def _render_md(text: str) -> str:
     import re as _re
     try:
         import markdown
-        # 先把裸 URL 转成 Markdown 链接格式，再渲染
+        # 裸 URL 转 markdown 链接
         text = _re.sub(r'(?<!\[)(?<!\()(https?://\S+)', r'[\1](\1)', text)
-        html = markdown.markdown(text, extensions=["tables", "fenced_code"])
-        # 给所有 <a> 标签加 target="_blank"
+        # 确保列表项前有空行（markdown 库严格模式需要）
+        text = _re.sub(r'([^\n])\n([-*] )', r'\1\n\n\2', text)
+        text = _re.sub(r'([^\n])\n(\d+\. )', r'\1\n\n\2', text)
+        html = markdown.markdown(text, extensions=["tables", "fenced_code", "nl2br"])
         html = html.replace("<a ", '<a target="_blank" rel="noopener" ')
         return html
     except ImportError:
         return _re.sub(r'(https?://\S+)', r'<a href="\1" target="_blank" rel="noopener">\1</a>', text.replace("\n", "<br>"))
+
+
+def _demote_headings(text: str) -> str:
+    """将记忆条目 body 中的 Markdown 标题降级，避免与分类/条目标题层级冲突。
+
+    # → ###, ## → ####, ### → #####
+    同时清理 body 中残留的一级标题重复行（如 body 以 "# 标题" 开头）。
+    """
+    import re as _re
+    # 去掉 body 开头的一级标题行（跟条目 title 重复）
+    text = _re.sub(r'^#\s+.*\n*', '', text.strip())
+    def _replace(m: _re.Match) -> str:
+        hashes = m.group(1)
+        rest = m.group(2)
+        new_level = min(len(hashes) + 2, 6)
+        return "#" * new_level + rest
+    return _re.sub(r'^(#{1,4})([ \t]+.*)$', _replace, text, flags=_re.MULTILINE)
 
 
 def _parse_memory_files(memory_dir: Path) -> list[dict]:
@@ -485,11 +505,15 @@ def _parse_memory_files(memory_dir: Path) -> list[dict]:
                     if m2:
                         extracted_at = m2.group(1).strip()
                     continue
+                m_update = re.match(r"^>\s*(?:更新于|聚合整理于):\s*(.+)", bline)
+                if m_update:
+                    extracted_at = m_update.group(1).strip()
+                    continue
                 body_lines.append(bline)
 
             entries.append({
                 "title": title,
-                "body_html": _render_md("\n".join(body_lines).strip()),
+                "body_html": _render_md(_demote_headings("\n".join(body_lines).strip())),
                 "source_id": source_id,
                 "extracted_at": extracted_at,
             })
@@ -559,6 +583,265 @@ async def test_connection(request: Request):
         return JSONResponse({"ok": True, "response": response[:200]})
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)})
+
+
+# ---- Resume API ----
+
+@app.put("/api/resume")
+async def api_update_resume(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "请求格式错误"}, status_code=400)
+    try:
+        db = await _get_db()
+        svc = ResumeService(db)
+        result = await svc.update_resume(body)
+        return JSONResponse({"ok": True, "fields": result.get("fields", [])})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": f"保存失败: {e}"}, status_code=500)
+
+
+@app.get("/api/resume/export/docx")
+async def api_export_docx():
+    try:
+        db = await _get_db()
+        svc = ResumeService(db)
+        docx_bytes, filename = await svc.export_docx()
+    except ValueError as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=404)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": f"导出失败: {e}"}, status_code=500)
+
+    import io
+    from urllib.parse import quote
+
+    return StreamingResponse(
+        io.BytesIO(docx_bytes),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"
+        },
+    )
+
+
+# ---- 测试 API ----
+
+@app.post("/api/test/chat")
+async def api_test_chat(request: Request):
+    """
+    通用 Agent 对话测试接口。
+
+    使用 google-genai SDK 直接调用 Gemini，独立于主体 LLMClient。
+    自行管理 function calling 循环，收集完整执行过程并返回结构化报告。
+    通过 config.enable_test_api 控制开关，生产环境可关闭。
+    """
+    import json as _json
+    import time
+
+    config = load_config()
+    if not config.enable_test_api:
+        return JSONResponse(
+            {"ok": False, "error": "测试 API 未启用"},
+            status_code=403,
+        )
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(
+            {"ok": False, "error": "请求格式错误"},
+            status_code=400,
+        )
+
+    message = body.get("message", "").strip()
+    if not message:
+        return JSONResponse(
+            {"ok": False, "error": "message 不能为空"},
+            status_code=400,
+        )
+
+    conversation_id = body.get("conversation_id")
+    history = body.get("history") or []
+
+    # 初始化
+    db = await _get_db()
+    llm_settings = await _load_llm_settings(db)
+    api_key = llm_settings.get("llm_api_key", "")
+    model = body.get("model") or "gemini-3-flash-preview"
+
+    if not api_key:
+        return JSONResponse(
+            {"ok": False, "error": "未配置 API Key，请先在设置中配置"},
+            status_code=400,
+        )
+
+    # 构建 tool registry 和 tool 定义
+    from agent.bootstrap import create_tool_registry
+    registry, _skill_loader = create_tool_registry()
+
+    try:
+        from google import genai
+        from google.genai import types as gtypes
+    except ImportError:
+        return JSONResponse(
+            {"ok": False, "error": "google-genai SDK 未安装"},
+            status_code=500,
+        )
+
+    client = genai.Client(api_key=api_key)
+
+    # 将 ToolRegistry 的 schemas 转为 google-genai 格式
+    func_decls = []
+    for schema in registry.get_all_schemas():
+        fn = schema["function"]
+        func_decls.append({
+            "name": fn["name"],
+            "description": fn["description"],
+            "parameters": fn["parameters"],
+        })
+
+    tools = gtypes.Tool(function_declarations=func_decls)
+    gen_config = gtypes.GenerateContentConfig(
+        tools=[tools],
+        system_instruction="你是 OfferBot，一个专业的 AI 求职顾问。根据用户请求，调用合适的工具或直接回复。",
+    )
+
+    # 构建对话内容
+    contents = []
+    for h in history:
+        if isinstance(h, dict) and "role" in h and "content" in h:
+            role = "model" if h["role"] == "assistant" else "user"
+            contents.append(gtypes.Content(
+                role=role,
+                parts=[gtypes.Part(text=h["content"])],
+            ))
+    contents.append(gtypes.Content(
+        role="user",
+        parts=[gtypes.Part(text=message)],
+    ))
+
+    # Agent loop: LLM → tool call → execute → feed back → repeat
+    tool_calls_report: list[dict] = []
+    reply = ""
+    start_time = time.time()
+    max_turns = 10
+
+    try:
+        for turn in range(max_turns):
+            import asyncio
+            response = await asyncio.to_thread(
+                client.models.generate_content,
+                model=model,
+                contents=contents,
+                config=gen_config,
+            )
+
+            candidate = response.candidates[0]
+            parts = candidate.content.parts
+
+            # 收集 function calls 和 text
+            func_calls_in_turn = []
+            text_parts = []
+            for part in parts:
+                if part.function_call:
+                    func_calls_in_turn.append(part.function_call)
+                elif part.text:
+                    text_parts.append(part.text)
+
+            if text_parts:
+                reply = "\n".join(text_parts)
+
+            # 没有 function call，结束
+            if not func_calls_in_turn:
+                break
+
+            # 把 model 的响应加入 contents
+            contents.append(candidate.content)
+
+            # 执行每个 function call
+            func_response_parts = []
+            for fc in func_calls_in_turn:
+                tool_name = fc.name
+                tool_args = dict(fc.args) if fc.args else {}
+                tool_start = time.time()
+
+                print(f"[TEST_CHAT] Tool call: {tool_name}({_json.dumps(tool_args, ensure_ascii=False)[:100]})", flush=True)
+
+                # 执行 tool
+                tool = registry.get_tool(tool_name)
+                tc_report = {
+                    "name": tool_name,
+                    "display_name": tool_name,
+                    "params": tool_args,
+                    "result": None,
+                    "success": False,
+                    "duration_ms": 0,
+                }
+
+                if tool:
+                    try:
+                        result = await tool.execute(tool_args, context={"db": db})
+                        result_str = _json.dumps(result, ensure_ascii=False, default=str)[:2000] if result else "{}"
+                        tc_report["success"] = True
+                        tc_report["result"] = result_str
+                    except Exception as e:
+                        result_str = _json.dumps({"error": str(e)}, ensure_ascii=False)
+                        tc_report["result"] = str(e)
+                else:
+                    result_str = _json.dumps({"error": f"Tool '{tool_name}' not found"})
+                    tc_report["result"] = f"Tool '{tool_name}' not found"
+
+                tc_report["duration_ms"] = int((time.time() - tool_start) * 1000)
+                tool_calls_report.append(tc_report)
+
+                print(f"[TEST_CHAT]   -> {'✅' if tc_report['success'] else '❌'} {tc_report['duration_ms']}ms", flush=True)
+
+                # 构建 function response
+                func_response_parts.append(
+                    gtypes.Part.from_function_response(
+                        name=tool_name,
+                        response={"result": result_str},
+                    )
+                )
+
+            # 把 function responses 加入 contents
+            contents.append(gtypes.Content(
+                role="user",
+                parts=func_response_parts,
+            ))
+
+    except Exception as e:
+        import traceback
+        print(f"[TEST_CHAT] EXCEPTION: {e}", flush=True)
+        traceback.print_exc()
+        return JSONResponse(
+            {"ok": False, "error": f"Agent 执行失败: {e}"},
+            status_code=500,
+        )
+
+    total_duration_ms = int((time.time() - start_time) * 1000)
+    print(f"[TEST_CHAT] Done. reply={reply[:80] if reply else '(empty)'}, tools={len(tool_calls_report)}, {total_duration_ms}ms", flush=True)
+
+    return JSONResponse({
+        "ok": True,
+        "reply": reply,
+        "tool_calls": tool_calls_report,
+        "conversation_id": conversation_id or "",
+        "total_duration_ms": total_duration_ms,
+        "model": model,
+        "token_usage": {"prompt": 0, "completion": 0},
+    })
+
+    return JSONResponse({
+        "ok": True,
+        "reply": reply,
+        "tool_calls": tool_calls,
+        "conversation_id": conversation_id or "",
+        "total_duration_ms": total_duration_ms,
+        "model": model,
+        "token_usage": {"prompt": 0, "completion": 0},
+    })
 
 
 # ---- 挂载 Chainlit ----

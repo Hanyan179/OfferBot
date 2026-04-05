@@ -82,8 +82,9 @@ class TestExtractPrompt:
             assert cn_name in categories_text, f"中文名 '{cn_name}' 未出现在 categories 文本中"
 
     def test_prompt_template_has_placeholders(self):
-        """EXTRACT_PROMPT 应包含 {categories} 和 {conversation} 占位符。"""
+        """EXTRACT_PROMPT 应包含 {categories}、{existing_memory} 和 {conversation} 占位符。"""
         assert "{categories}" in EXTRACT_PROMPT
+        assert "{existing_memory}" in EXTRACT_PROMPT
         assert "{conversation}" in EXTRACT_PROMPT
 
     def test_prompt_contains_key_rules(self):
@@ -94,7 +95,7 @@ class TestExtractPrompt:
 
     def test_prompt_instructs_no_text_reply(self):
         """提取 prompt 应指示不输出文本回复，只通过工具调用保存。"""
-        assert "不要输出任何文本回复" in EXTRACT_PROMPT
+        assert "不要调用任何工具" in EXTRACT_PROMPT
 
 
 # ---------------------------------------------------------------------------

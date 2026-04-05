@@ -3,9 +3,6 @@
 # --- UI ---
 chainlit>=2.0
 
-# --- 浏览器自动化 ---
-playwright>=1.40
-
 # --- LLM / Embedding ---
 dashscope>=1.14
 openai>=1.0

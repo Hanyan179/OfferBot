@@ -4,146 +4,293 @@
 </div>
 
 <!-- ===== 简历概要 ===== -->
-<div class="card">
-  <h2 class="category-title">📄 简历信息</h2>
+<div class="card" id="resume-card">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+    <h2 class="category-title" style="margin-bottom:0;padding-bottom:0;border-bottom:none;">📄 简历信息</h2>
+    <div class="resume-toolbar">
+      <button class="btn btn-secondary btn-sm view-only" onclick="resumeEditor.enterEdit()" title="编辑简历">✏️ 编辑</button>
+      <button class="btn btn-secondary btn-sm view-only" onclick="resumeEditor.downloadDocx()" title="下载 DOCX">📥 下载 DOCX</button>
+      <button class="btn btn-primary btn-sm edit-only" onclick="resumeEditor.save()" id="btn-save" title="保存">💾 保存</button>
+      <button class="btn btn-secondary btn-sm edit-only" onclick="resumeEditor.cancel()" title="取消">✖ 取消</button>
+    </div>
+  </div>
 
-  <!-- 基本信息 -->
+  <!-- 错误提示 -->
+  <div id="resume-error" style="display:none;background:#fee2e2;color:#991b1b;padding:10px 14px;border-radius:10px;font-size:13px;margin-bottom:12px;"></div>
+
+  <!-- ===== 基本信息 ===== -->
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:14px;margin-bottom:16px;">
-    <div><span style="color:#86868b;">姓名：</span>{{ resume.name or '未填写' }}</div>
-    <div><span style="color:#86868b;">城市：</span>{{ resume.city or '未填写' }}</div>
-    <div><span style="color:#86868b;">经验：</span>{{ resume.experience or '未填写' }}</div>
-    <div><span style="color:#86868b;">学历：</span>{{ resume.education or '未填写' }}</div>
-    {% if resume.school %}<div><span style="color:#86868b;">学校：</span>{{ resume.school }}</div>{% endif %}
-    {% if resume.major %}<div><span style="color:#86868b;">专业：</span>{{ resume.major }}</div>{% endif %}
-    {% if resume.current_company %}<div><span style="color:#86868b;">当前公司：</span>{{ resume.current_company }}</div>{% endif %}
-    {% if resume.current_role %}<div><span style="color:#86868b;">当前职位：</span>{{ resume.current_role }}</div>{% endif %}
+    {% set scalars = [
+      ('name', '姓名', resume.name, 'text'),
+      ('city', '城市', resume.city, 'text'),
+      ('years_of_experience', '经验年限', resume.experience, 'text'),
+      ('education_level', '学历', resume.education, 'text'),
+      ('school', '学校', resume.school, 'text'),
+      ('education_major', '专业', resume.major, 'text'),
+      ('current_company', '当前公司', resume.current_company, 'text'),
+      ('current_role', '当前职位', resume.current_role, 'text'),
+    ] %}
+    {% for field, label, value, type in scalars %}
+    <div>
+      <span class="view-only"><span style="color:#86868b;">{{ label }}：</span>{{ value or '未填写' }}</span>
+      <div class="edit-only form-group" style="margin-bottom:0;">
+        <label>{{ label }}</label>
+        <input type="{{ type }}" name="{{ field }}" value="{{ value or '' }}" class="scalar-input">
+      </div>
+    </div>
+    {% endfor %}
   </div>
 
   <!-- 个人简介 -->
-  {% if resume.summary %}
   <div style="margin-bottom:16px;">
     <h3 style="font-size:13px;font-weight:600;color:#86868b;margin-bottom:8px;">个人简介</h3>
-    <p style="font-size:13px;line-height:1.6;color:#444;">{{ resume.summary }}</p>
+    <p class="view-only" style="font-size:13px;line-height:1.6;color:#444;">{{ resume.summary or '未填写' }}</p>
+    <div class="edit-only">
+      <textarea name="summary" rows="4" class="scalar-input" style="font-size:13px;">{{ resume.summary or '' }}</textarea>
+    </div>
   </div>
-  {% endif %}
 
   <!-- 自我评价 -->
-  {% if resume.self_evaluation %}
   <div style="margin-bottom:16px;">
     <h3 style="font-size:13px;font-weight:600;color:#86868b;margin-bottom:8px;">自我评价</h3>
-    <p style="font-size:13px;line-height:1.6;color:#444;">{{ resume.self_evaluation }}</p>
+    <p class="view-only" style="font-size:13px;line-height:1.6;color:#444;">{{ resume.self_evaluation or '未填写' }}</p>
+    <div class="edit-only">
+      <textarea name="self_evaluation" rows="4" class="scalar-input" style="font-size:13px;">{{ resume.self_evaluation or '' }}</textarea>
+    </div>
   </div>
-  {% endif %}
 
-  <!-- 技术栈 -->
-  {% if resume.tech_stack %}
+  <!-- ===== 技术栈 ===== -->
   <div style="margin-bottom:16px;">
     <h3 style="font-size:13px;font-weight:600;color:#86868b;margin-bottom:8px;">技术栈</h3>
-    <div style="display:flex;flex-wrap:wrap;gap:6px;">
+    <div class="view-only" style="display:flex;flex-wrap:wrap;gap:6px;">
       {% for skill in resume.tech_stack %}<span class="badge badge-blue">{{ skill }}</span>{% endfor %}
+      {% if not resume.tech_stack %}<span style="color:#86868b;font-size:13px;">暂无</span>{% endif %}
+    </div>
+    <div class="edit-only">
+      <div id="tech-stack-tags" class="tag-container">
+        {% for skill in resume.tech_stack %}<span class="tag-item">{{ skill }}<button type="button" class="tag-remove" onclick="resumeEditor.removeTag(this)">&times;</button></span>{% endfor %}
+        <input type="text" class="tag-input" placeholder="输入后按 Enter 添加" onkeydown="resumeEditor.handleTagKey(event, this, 'tech-stack-tags')">
+      </div>
     </div>
   </div>
-  {% endif %}
 
-  <!-- 核心亮点 -->
-  {% if resume.highlights %}
+  <!-- ===== 核心亮点 ===== -->
   <div style="margin-bottom:16px;">
     <h3 style="font-size:13px;font-weight:600;color:#86868b;margin-bottom:8px;">核心亮点</h3>
-    <ul style="font-size:13px;line-height:1.8;color:#444;padding-left:18px;margin:0;">
-      {% for h in resume.highlights %}<li>{{ h }}</li>{% endfor %}
-    </ul>
+    <div class="view-only">
+      {% if resume.highlights %}
+      <ul style="font-size:13px;line-height:1.8;color:#444;padding-left:18px;margin:0;">
+        {% for h in resume.highlights %}<li>{{ h }}</li>{% endfor %}
+      </ul>
+      {% else %}<span style="color:#86868b;font-size:13px;">暂无</span>{% endif %}
+    </div>
+    <div class="edit-only" id="highlights-list">
+      {% for h in resume.highlights %}
+      <div class="editable-list-item">
+        <input type="text" value="{{ h }}" class="highlight-input">
+        <button type="button" class="btn btn-danger btn-sm" onclick="this.parentElement.remove()">删除</button>
+      </div>
+      {% endfor %}
+      <button type="button" class="btn btn-secondary btn-sm" onclick="resumeEditor.addHighlight()">+ 添加亮点</button>
+    </div>
   </div>
-  {% endif %}
 
-  <!-- 工作经历 -->
-  {% if resume.work_experience %}
+  <!-- ===== 工作经历 ===== -->
   <div style="margin-bottom:16px;">
     <h3 style="font-size:13px;font-weight:600;color:#86868b;margin-bottom:8px;">工作经历</h3>
-    {% for exp in resume.work_experience %}
-    <div style="padding:8px 0;border-bottom:1px solid rgba(0,0,0,.04);">
-      <div><strong>{{ exp.company }}</strong> · {{ exp.role }} <span style="font-size:12px;color:#86868b;">{{ exp.duration }}</span></div>
-      {% if exp.tech_stack %}<div style="font-size:12px;color:#86868b;margin-top:2px;">技术栈: {{ exp.tech_stack }}</div>{% endif %}
-      <p style="font-size:13px;color:#6e6e73;margin-top:4px;">{{ exp.description }}</p>
-      {% if exp.highlights %}
-      <ul style="font-size:12px;color:#6e6e73;padding-left:16px;margin:4px 0 0;">
-        {% for h in exp.highlights %}<li>{{ h }}</li>{% endfor %}
-      </ul>
-      {% endif %}
+    <div class="view-only">
+      {% if resume.work_experience %}
+      {% for exp in resume.work_experience %}
+      <div style="padding:8px 0;border-bottom:1px solid rgba(0,0,0,.04);">
+        <div><strong>{{ exp.company }}</strong> · {{ exp.role }} <span style="font-size:12px;color:#86868b;">{{ exp.duration }}</span></div>
+        {% if exp.tech_stack %}<div style="font-size:12px;color:#86868b;margin-top:2px;">技术栈: {{ exp.tech_stack }}</div>{% endif %}
+        <p style="font-size:13px;color:#6e6e73;margin-top:4px;">{{ exp.description }}</p>
+        {% if exp.highlights %}
+        <ul style="font-size:12px;color:#6e6e73;padding-left:16px;margin:4px 0 0;">
+          {% for h in exp.highlights %}<li>{{ h }}</li>{% endfor %}
+        </ul>
+        {% endif %}
+      </div>
+      {% endfor %}
+      {% else %}<span style="color:#86868b;font-size:13px;">暂无</span>{% endif %}
     </div>
-    {% endfor %}
+    <div class="edit-only" id="work-exp-list">
+      {% for exp in resume.work_experience %}
+      <div class="list-edit-card" data-type="work_exp">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <strong style="font-size:13px;">工作经历 #{{ loop.index }}</strong>
+          <button type="button" class="btn btn-danger btn-sm" onclick="this.closest('.list-edit-card').remove()">删除</button>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <div class="form-group" style="margin-bottom:8px;"><label>公司</label><input type="text" value="{{ exp.company }}" data-field="company"></div>
+          <div class="form-group" style="margin-bottom:8px;"><label>职位</label><input type="text" value="{{ exp.role }}" data-field="role"></div>
+          <div class="form-group" style="margin-bottom:8px;"><label>时间段</label><input type="text" value="{{ exp.duration }}" data-field="duration"></div>
+          <div class="form-group" style="margin-bottom:8px;"><label>技术栈</label><input type="text" value="{{ exp.tech_stack }}" data-field="tech_stack"></div>
+        </div>
+        <div class="form-group" style="margin-bottom:8px;"><label>描述</label><textarea rows="2" data-field="description">{{ exp.description }}</textarea></div>
+        <div class="sub-highlights">
+          <label style="font-size:12px;">亮点</label>
+          {% for h in exp.highlights %}
+          <div class="editable-list-item"><input type="text" value="{{ h }}" class="sub-hl-input"><button type="button" class="btn btn-danger btn-sm" onclick="this.parentElement.remove()">删除</button></div>
+          {% endfor %}
+          <button type="button" class="btn btn-secondary btn-sm" style="margin-top:4px;" onclick="resumeEditor.addSubHighlight(this)">+ 添加亮点</button>
+        </div>
+      </div>
+      {% endfor %}
+      <button type="button" class="btn btn-secondary btn-sm" onclick="resumeEditor.addWorkExp()">+ 添加工作经历</button>
+    </div>
   </div>
-  {% endif %}
 
-  <!-- 项目经验 -->
-  {% if resume.projects %}
+  <!-- ===== 项目经验 ===== -->
   <div style="margin-bottom:16px;">
     <h3 style="font-size:13px;font-weight:600;color:#86868b;margin-bottom:8px;">项目经验</h3>
-    {% for proj in resume.projects %}
-    <div style="padding:8px 0;border-bottom:1px solid rgba(0,0,0,.04);">
-      <div><strong>{{ proj.name }}</strong></div>
-      {% if proj.tech_stack %}<div style="font-size:12px;color:#86868b;margin-top:2px;">技术栈: {{ proj.tech_stack }}</div>{% endif %}
-      <p style="font-size:13px;color:#6e6e73;margin-top:4px;">{{ proj.description }}</p>
-      {% if proj.highlights %}
-      <ul style="font-size:12px;color:#6e6e73;padding-left:16px;margin:4px 0 0;">
-        {% for h in proj.highlights %}<li>{{ h }}</li>{% endfor %}
-      </ul>
-      {% endif %}
+    <div class="view-only">
+      {% if resume.projects %}
+      {% for proj in resume.projects %}
+      <div style="padding:8px 0;border-bottom:1px solid rgba(0,0,0,.04);">
+        <div><strong>{{ proj.name }}</strong></div>
+        {% if proj.tech_stack %}<div style="font-size:12px;color:#86868b;margin-top:2px;">技术栈: {{ proj.tech_stack }}</div>{% endif %}
+        <p style="font-size:13px;color:#6e6e73;margin-top:4px;">{{ proj.description }}</p>
+        {% if proj.highlights %}
+        <ul style="font-size:12px;color:#6e6e73;padding-left:16px;margin:4px 0 0;">
+          {% for h in proj.highlights %}<li>{{ h }}</li>{% endfor %}
+        </ul>
+        {% endif %}
+      </div>
+      {% endfor %}
+      {% else %}<span style="color:#86868b;font-size:13px;">暂无</span>{% endif %}
     </div>
-    {% endfor %}
+    <div class="edit-only" id="projects-list">
+      {% for proj in resume.projects %}
+      <div class="list-edit-card" data-type="project">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <strong style="font-size:13px;">项目 #{{ loop.index }}</strong>
+          <button type="button" class="btn btn-danger btn-sm" onclick="this.closest('.list-edit-card').remove()">删除</button>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <div class="form-group" style="margin-bottom:8px;"><label>项目名称</label><input type="text" value="{{ proj.name }}" data-field="name"></div>
+          <div class="form-group" style="margin-bottom:8px;"><label>技术栈</label><input type="text" value="{{ proj.tech_stack }}" data-field="tech_stack"></div>
+        </div>
+        <div class="form-group" style="margin-bottom:8px;"><label>描述</label><textarea rows="2" data-field="description">{{ proj.description }}</textarea></div>
+        <div class="sub-highlights">
+          <label style="font-size:12px;">亮点</label>
+          {% for h in proj.highlights %}
+          <div class="editable-list-item"><input type="text" value="{{ h }}" class="sub-hl-input"><button type="button" class="btn btn-danger btn-sm" onclick="this.parentElement.remove()">删除</button></div>
+          {% endfor %}
+          <button type="button" class="btn btn-secondary btn-sm" style="margin-top:4px;" onclick="resumeEditor.addSubHighlight(this)">+ 添加亮点</button>
+        </div>
+      </div>
+      {% endfor %}
+      <button type="button" class="btn btn-secondary btn-sm" onclick="resumeEditor.addProject()">+ 添加项目</button>
+    </div>
   </div>
-  {% endif %}
 
-  <!-- 求职意向 -->
-  {% if resume.job_preferences %}
+  <!-- ===== 求职意向 ===== -->
   <div style="margin-bottom:16px;">
     <h3 style="font-size:13px;font-weight:600;color:#86868b;margin-bottom:8px;">求职意向</h3>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;">
-      {% if resume.job_preferences.target_cities %}<div><span style="color:#86868b;">目标城市：</span>{{ resume.job_preferences.target_cities | join(', ') }}</div>{% endif %}
-      {% if resume.job_preferences.target_roles %}<div><span style="color:#86868b;">目标岗位：</span>{{ resume.job_preferences.target_roles | join(', ') }}</div>{% endif %}
-      {% if resume.job_preferences.salary_min or resume.job_preferences.salary_max %}<div><span style="color:#86868b;">期望薪资：</span>{{ resume.job_preferences.salary_min or '?' }}K - {{ resume.job_preferences.salary_max or '?' }}K</div>{% endif %}
-      {% if resume.job_preferences.work_type %}<div><span style="color:#86868b;">工作类型：</span>{{ resume.job_preferences.work_type }}</div>{% endif %}
+    <div class="view-only">
+      {% if resume.job_preferences %}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;">
+        {% if resume.job_preferences.target_cities %}<div><span style="color:#86868b;">目标城市：</span>{{ resume.job_preferences.target_cities | join(', ') }}</div>{% endif %}
+        {% if resume.job_preferences.target_roles %}<div><span style="color:#86868b;">目标岗位：</span>{{ resume.job_preferences.target_roles | join(', ') }}</div>{% endif %}
+        {% if resume.job_preferences.salary_min or resume.job_preferences.salary_max %}<div><span style="color:#86868b;">期望薪资：</span>{{ resume.job_preferences.salary_min or '?' }}K - {{ resume.job_preferences.salary_max or '?' }}K</div>{% endif %}
+        {% if resume.job_preferences.work_type %}<div><span style="color:#86868b;">工作类型：</span>{{ resume.job_preferences.work_type }}</div>{% endif %}
+      </div>
+      {% if resume.job_preferences.priorities %}
+      <div style="margin-top:8px;font-size:13px;"><span style="color:#86868b;">优先考虑：</span>{{ resume.job_preferences.priorities | join('、') }}</div>
+      {% endif %}
+      {% if resume.job_preferences.deal_breakers %}
+      <div style="margin-top:4px;font-size:13px;"><span style="color:#86868b;">不能接受：</span>{{ resume.job_preferences.deal_breakers | join('、') }}</div>
+      {% endif %}
+      {% else %}<span style="color:#86868b;font-size:13px;">暂无</span>{% endif %}
     </div>
-    {% if resume.job_preferences.priorities %}
-    <div style="margin-top:8px;font-size:13px;"><span style="color:#86868b;">优先考虑：</span>{{ resume.job_preferences.priorities | join('、') }}</div>
-    {% endif %}
-    {% if resume.job_preferences.deal_breakers %}
-    <div style="margin-top:4px;font-size:13px;"><span style="color:#86868b;">不能接受：</span>{{ resume.job_preferences.deal_breakers | join('、') }}</div>
-    {% endif %}
+    <div class="edit-only" id="job-pref-edit">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="form-group">
+          <label>目标城市</label>
+          <div id="jp-target-cities" class="tag-container">
+            {% if resume.job_preferences and resume.job_preferences.target_cities %}{% for c in resume.job_preferences.target_cities %}<span class="tag-item">{{ c }}<button type="button" class="tag-remove" onclick="resumeEditor.removeTag(this)">&times;</button></span>{% endfor %}{% endif %}
+            <input type="text" class="tag-input" placeholder="输入后按 Enter" onkeydown="resumeEditor.handleTagKey(event, this, 'jp-target-cities')">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>目标岗位</label>
+          <div id="jp-target-roles" class="tag-container">
+            {% if resume.job_preferences and resume.job_preferences.target_roles %}{% for r in resume.job_preferences.target_roles %}<span class="tag-item">{{ r }}<button type="button" class="tag-remove" onclick="resumeEditor.removeTag(this)">&times;</button></span>{% endfor %}{% endif %}
+            <input type="text" class="tag-input" placeholder="输入后按 Enter" onkeydown="resumeEditor.handleTagKey(event, this, 'jp-target-roles')">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>期望薪资 (K)</label>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="number" id="jp-salary-min" placeholder="下限" value="{{ resume.job_preferences.salary_min if resume.job_preferences and resume.job_preferences.salary_min else '' }}" style="width:50%;">
+            <span>—</span>
+            <input type="number" id="jp-salary-max" placeholder="上限" value="{{ resume.job_preferences.salary_max if resume.job_preferences and resume.job_preferences.salary_max else '' }}" style="width:50%;">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>工作类型</label>
+          <select id="jp-work-type">
+            {% set wt = resume.job_preferences.work_type if resume.job_preferences else '' %}
+            <option value="">请选择</option>
+            <option value="full_time" {{ 'selected' if wt == 'full_time' }}>全职</option>
+            <option value="part_time" {{ 'selected' if wt == 'part_time' }}>兼职</option>
+            <option value="contract" {{ 'selected' if wt == 'contract' }}>合同</option>
+            <option value="freelance" {{ 'selected' if wt == 'freelance' }}>自由职业</option>
+            <option value="remote" {{ 'selected' if wt == 'remote' }}>远程</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px;">
+        <div class="form-group">
+          <label>优先考虑</label>
+          <div id="jp-priorities" class="tag-container">
+            {% if resume.job_preferences and resume.job_preferences.priorities %}{% for p in resume.job_preferences.priorities %}<span class="tag-item">{{ p }}<button type="button" class="tag-remove" onclick="resumeEditor.removeTag(this)">&times;</button></span>{% endfor %}{% endif %}
+            <input type="text" class="tag-input" placeholder="输入后按 Enter" onkeydown="resumeEditor.handleTagKey(event, this, 'jp-priorities')">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>不能接受</label>
+          <div id="jp-deal-breakers" class="tag-container">
+            {% if resume.job_preferences and resume.job_preferences.deal_breakers %}{% for d in resume.job_preferences.deal_breakers %}<span class="tag-item">{{ d }}<button type="button" class="tag-remove" onclick="resumeEditor.removeTag(this)">&times;</button></span>{% endfor %}{% endif %}
+            <input type="text" class="tag-input" placeholder="输入后按 Enter" onkeydown="resumeEditor.handleTagKey(event, this, 'jp-deal-breakers')">
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
-  {% endif %}
 
   {% if not resume.name and not resume.tech_stack and not resume.work_experience %}
-  <div class="empty" style="padding:12px 0;">暂无简历数据，和 AI 对话或上传简历后会自动填充。</div>
+  <div class="empty view-only" style="padding:12px 0;">暂无简历数据，和 AI 对话或上传简历后会自动填充。</div>
   {% endif %}
 </div>
 
 <!-- ===== 记忆画像分类 ===== -->
 {% if not categories %}
 <div class="card">
-  <h2 class="category-title">💭 记忆画像</h2>
+  <h2 style="font-size:17px;font-weight:600;margin-bottom:8px;">💭 记忆画像</h2>
   <div class="empty">暂无记忆数据，和 AI 对话后会自动积累。</div>
 </div>
 {% endif %}
 
 {% for cat in categories %}
 <div class="card memory-category">
-  <h2 class="category-title">{{ cat.display_name }}</h2>
+  <div class="cat-header">
+    <h2 class="cat-name">{{ cat.display_name }}</h2>
+    <span class="cat-badge">{{ cat.entries | length }}</span>
+  </div>
   {% if not cat.entries %}
-  <p class="empty-cat">暂无条目</p>
+  <p style="font-size:13px;color:#86868b;padding:0 20px 16px;">暂无条目</p>
   {% endif %}
   {% for entry in cat.entries %}
-  <div class="memory-entry">
-    <h3 class="entry-title">{{ entry.title }}</h3>
-    <div class="entry-body">{{ entry.body_html | safe }}</div>
-    {% if entry.source_id or entry.extracted_at %}
-    <div class="entry-meta">
-      {% if entry.source_id %}
-      <span class="meta-source" title="来源会话: {{ entry.source_id }}">📎 {{ entry.source_id }}</span>
-      {% endif %}
-      {% if entry.extracted_at %}
-      <span class="meta-time">🕐 {{ entry.extracted_at }}</span>
-      {% endif %}
+  <div class="mem-row{% if not loop.last %} mem-row-border{% endif %}">
+    <div class="mem-row-head">
+      <h3 class="mem-title">{{ entry.title }}</h3>
+      {% if entry.extracted_at %}<span class="mem-time">{{ entry.extracted_at }}</span>{% endif %}
     </div>
+    <div class="mem-body">{{ entry.body_html | safe }}</div>
+    {% if entry.source_id %}
+    <div class="mem-meta">📎 {{ entry.source_id }}</div>
     {% endif %}
   </div>
   {% endfor %}
@@ -151,21 +298,294 @@
 {% endfor %}
 
 <style>
-.memory-category { margin-bottom: 20px; }
-.category-title { font-size: 17px; font-weight: 700; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid rgba(0,0,0,.06); }
-html.dark .category-title { border-bottom-color: rgba(255,255,255,.08); }
-.empty-cat { font-size: 13px; color: #86868b; }
-.memory-entry { padding: 12px 0; border-bottom: 1px solid rgba(0,0,0,.04); }
-html.dark .memory-entry { border-bottom-color: rgba(255,255,255,.04); }
-.memory-entry:last-child { border-bottom: none; padding-bottom: 0; }
-.entry-title { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
-.entry-body { font-size: 13px; line-height: 1.6; color: #444; }
-.entry-body a { color: #007aff; text-decoration: none; word-break: break-all; }
-.entry-body a:hover { text-decoration: underline; }
-html.dark .entry-body { color: #bbb; }
-html.dark .entry-body a { color: #0a84ff; }
+/* ===== 记忆画像 — iOS Grouped List ===== */
+.memory-category { margin-bottom: 20px; padding: 0 !important; overflow: hidden; }
+
+.cat-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px 10px; }
+.cat-name { font-size: 20px; font-weight: 700; letter-spacing: -0.4px; margin: 0; padding: 0; border: none; color: #007aff; }
+html.dark .cat-name { color: #0a84ff; }
+.cat-badge { font-size: 11px; font-weight: 600; color: #fff; background: #007aff; min-width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; border-radius: 99px; padding: 0 7px; }
+
+.mem-row { padding: 12px 20px; }
+.mem-row-border { border-bottom: 0.5px solid rgba(60,60,67,.12); margin-left: 20px; padding-left: 0; }
+html.dark .mem-row-border { border-bottom-color: rgba(255,255,255,.08); }
+
+.mem-row-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 4px; }
+.mem-title { font-size: 15px; font-weight: 600; color: #1d1d1f; margin: 0; flex: 1; letter-spacing: -0.2px; }
+html.dark .mem-title { color: #f5f5f7; }
+.mem-time { font-size: 11px; color: #8e8e93; white-space: nowrap; flex-shrink: 0; }
+
+.mem-body { font-size: 13px; line-height: 1.65; color: #3c3c43; }
+html.dark .mem-body { color: #ababab; }
+.mem-body p { margin: 3px 0; }
+.mem-body strong { color: #1d1d1f; font-weight: 600; }
+html.dark .mem-body strong { color: #e5e5e5; }
+.mem-body h3 { font-size: 14px; font-weight: 600; color: #1d1d1f; margin: 10px 0 4px; }
+.mem-body h4 { font-size: 13px; font-weight: 600; color: #48484a; margin: 8px 0 3px; }
+.mem-body h5, .mem-body h6 { font-size: 13px; font-weight: 500; color: #636366; margin: 6px 0 3px; }
+html.dark .mem-body h3 { color: #e5e5e5; }
+html.dark .mem-body h4 { color: #c7c7cc; }
+html.dark .mem-body h5, html.dark .mem-body h6 { color: #8e8e93; }
+.mem-body ul, .mem-body ol { padding-left: 20px; margin: 4px 0; }
+.mem-body li { margin: 2px 0; }
+.mem-body blockquote { border-left: 3px solid rgba(60,60,67,.1); padding-left: 12px; margin: 8px 0; color: #8e8e93; font-size: 12px; }
+html.dark .mem-body blockquote { border-left-color: rgba(255,255,255,.1); }
+.mem-body a { color: #007aff; text-decoration: none; word-break: break-all; }
+.mem-body a:hover { text-decoration: underline; }
+html.dark .mem-body a { color: #0a84ff; }
+.mem-body table { font-size: 12px; border-collapse: collapse; width: 100%; margin: 8px 0; }
+.mem-body th, .mem-body td { border: 1px solid rgba(60,60,67,.08); padding: 4px 8px; text-align: left; }
+html.dark .mem-body th, html.dark .mem-body td { border-color: rgba(255,255,255,.08); }
 html.dark .card p { color: #bbb; }
 html.dark .card ul li { color: #bbb; }
-.entry-meta { margin-top: 8px; display: flex; gap: 14px; font-size: 11px; color: #86868b; }
-.meta-source { cursor: default; }
+
+.mem-meta { margin-top: 6px; font-size: 11px; color: #8e8e93; }
+
+/* 按钮基础（embed_wrap 没有 btn 样式，需自带） */
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 10px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; transition: all .15s; text-decoration: none; }
+
+/* 编辑模式切换 — 必须在 .btn 之后，确保 display:none 优先级更高 */
+.resume-toolbar { display: flex; gap: 6px; }
+#resume-card .edit-only { display: none !important; }
+#resume-card .view-only { display: revert; }
+#resume-card.editing .edit-only { display: block !important; }
+#resume-card.editing .view-only { display: none !important; }
+#resume-card.editing .resume-toolbar .edit-only { display: inline-flex !important; }
+.btn-primary { background: #007aff; color: #fff; }
+.btn-primary:hover { background: #0056d6; }
+.btn-secondary { background: #f0f0f0; color: #1d1d1f; }
+.btn-secondary:hover { background: #e5e5e5; }
+.btn-danger { background: #ff3b30; color: #fff; }
+.btn-danger:hover { background: #d63028; }
+.btn-sm { padding: 5px 12px; font-size: 12px; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* 表单（embed_wrap 没有表单样式） */
+.form-group { margin-bottom: 16px; }
+.form-group label { font-size: 13px; font-weight: 500; color: #1d1d1f; display: block; margin-bottom: 4px; }
+html.dark .form-group label { color: #e5e5e5; }
+.edit-only input[type="text"],
+.edit-only input[type="number"],
+.edit-only textarea,
+.edit-only select {
+  width: 100%; padding: 8px 12px; border: 1px solid rgba(0,0,0,.1); border-radius: 8px;
+  font-size: 13px; background: #fafafa; transition: border-color .2s;
+}
+html.dark .edit-only input[type="text"],
+html.dark .edit-only input[type="number"],
+html.dark .edit-only textarea,
+html.dark .edit-only select { background: #333; border-color: rgba(255,255,255,.1); color: #e5e5e5; }
+.edit-only input:focus, .edit-only textarea:focus, .edit-only select:focus { border-color: rgba(0,122,255,.5); outline: none; box-shadow: 0 0 0 3px rgba(0,122,255,.1); }
+
+/* 标签输入 */
+.tag-container { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 10px; border: 1px solid rgba(0,0,0,.1); border-radius: 8px; background: #fafafa; min-height: 38px; align-items: center; }
+html.dark .tag-container { background: #333; border-color: rgba(255,255,255,.1); }
+.tag-item { display: inline-flex; align-items: center; gap: 4px; background: #dbeafe; color: #1e40af; padding: 2px 10px; border-radius: 99px; font-size: 12px; font-weight: 500; }
+.tag-remove { background: none; border: none; color: #1e40af; cursor: pointer; font-size: 14px; padding: 0 2px; line-height: 1; }
+.tag-input { border: none; outline: none; background: transparent; font-size: 13px; flex: 1; min-width: 80px; padding: 4px 0; }
+html.dark .tag-input { color: #e5e5e5; }
+
+/* 列表编辑卡片 */
+.list-edit-card { background: #f9fafb; border: 1px solid rgba(0,0,0,.06); border-radius: 10px; padding: 12px; margin-bottom: 10px; }
+html.dark .list-edit-card { background: #333; border-color: rgba(255,255,255,.06); }
+.editable-list-item { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+.editable-list-item input { flex: 1; }
+.sub-highlights { margin-top: 8px; }
 </style>
+
+<script>
+const resumeEditor = {
+  _snapshot: null,
+  _scrollY: 0,
+
+  enterEdit() {
+    this._scrollY = window.scrollY;
+    this._snapshot = this._collectData();
+    document.getElementById('resume-card').classList.add('editing');
+    document.getElementById('resume-error').style.display = 'none';
+    window.scrollTo(0, this._scrollY);
+  },
+
+  cancel() {
+    const current = JSON.stringify(this._collectData());
+    const original = JSON.stringify(this._snapshot);
+    if (current !== original) {
+      if (!confirm('有未保存的修改，确定要放弃吗？')) return;
+    }
+    this._scrollY = window.scrollY;
+    document.getElementById('resume-card').classList.remove('editing');
+    document.getElementById('resume-error').style.display = 'none';
+    window.scrollTo(0, this._scrollY);
+  },
+
+  async save() {
+    const btn = document.getElementById('btn-save');
+    const errEl = document.getElementById('resume-error');
+    btn.disabled = true;
+    btn.textContent = '⏳ 保存中…';
+    errEl.style.display = 'none';
+    try {
+      const data = this._collectData();
+      const resp = await fetch('/api/resume', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      const result = await resp.json();
+      if (result.ok) {
+        location.reload();
+      } else {
+        errEl.textContent = result.error || '保存失败';
+        errEl.style.display = 'block';
+      }
+    } catch (e) {
+      errEl.textContent = '网络错误，请重试';
+      errEl.style.display = 'block';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '💾 保存';
+    }
+  },
+
+  downloadDocx() {
+    window.location.href = '/api/resume/export/docx';
+  },
+
+  /* ---- 标签输入 ---- */
+  handleTagKey(e, input, containerId) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const val = input.value.trim();
+    if (!val) return;
+    const container = document.getElementById(containerId);
+    const tag = document.createElement('span');
+    tag.className = 'tag-item';
+    tag.innerHTML = val + '<button type="button" class="tag-remove" onclick="resumeEditor.removeTag(this)">&times;</button>';
+    container.insertBefore(tag, input);
+    input.value = '';
+  },
+
+  removeTag(btn) {
+    btn.parentElement.remove();
+  },
+
+  _getTagValues(containerId) {
+    const tags = document.getElementById(containerId).querySelectorAll('.tag-item');
+    return Array.from(tags).map(t => {
+      const clone = t.cloneNode(true);
+      const rm = clone.querySelector('.tag-remove');
+      if (rm) rm.remove();
+      return clone.textContent.trim();
+    }).filter(Boolean);
+  },
+
+  /* ---- 核心亮点 ---- */
+  addHighlight() {
+    const list = document.getElementById('highlights-list');
+    const addBtn = list.querySelector(':scope > button:last-of-type');
+    const item = document.createElement('div');
+    item.className = 'editable-list-item';
+    item.innerHTML = '<input type="text" value="" class="highlight-input"><button type="button" class="btn btn-danger btn-sm" onclick="this.parentElement.remove()">删除</button>';
+    list.insertBefore(item, addBtn);
+  },
+
+  /* ---- 子亮点 ---- */
+  addSubHighlight(btn) {
+    const item = document.createElement('div');
+    item.className = 'editable-list-item';
+    item.innerHTML = '<input type="text" value="" class="sub-hl-input"><button type="button" class="btn btn-danger btn-sm" onclick="this.parentElement.remove()">删除</button>';
+    btn.parentElement.insertBefore(item, btn);
+  },
+
+  /* ---- 添加工作经历 ---- */
+  addWorkExp() {
+    const list = document.getElementById('work-exp-list');
+    const addBtn = list.querySelector(':scope > button:last-of-type');
+    const idx = list.querySelectorAll('.list-edit-card').length + 1;
+    const card = document.createElement('div');
+    card.className = 'list-edit-card';
+    card.dataset.type = 'work_exp';
+    card.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <strong style="font-size:13px;">工作经历 #${idx}</strong>
+        <button type="button" class="btn btn-danger btn-sm" onclick="this.closest('.list-edit-card').remove()">删除</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div class="form-group" style="margin-bottom:8px;"><label>公司</label><input type="text" data-field="company"></div>
+        <div class="form-group" style="margin-bottom:8px;"><label>职位</label><input type="text" data-field="role"></div>
+        <div class="form-group" style="margin-bottom:8px;"><label>时间段</label><input type="text" data-field="duration"></div>
+        <div class="form-group" style="margin-bottom:8px;"><label>技术栈</label><input type="text" data-field="tech_stack"></div>
+      </div>
+      <div class="form-group" style="margin-bottom:8px;"><label>描述</label><textarea rows="2" data-field="description"></textarea></div>
+      <div class="sub-highlights">
+        <label style="font-size:12px;">亮点</label>
+        <button type="button" class="btn btn-secondary btn-sm" style="margin-top:4px;" onclick="resumeEditor.addSubHighlight(this)">+ 添加亮点</button>
+      </div>`;
+    list.insertBefore(card, addBtn);
+  },
+
+  /* ---- 添加项目 ---- */
+  addProject() {
+    const list = document.getElementById('projects-list');
+    const addBtn = list.querySelector(':scope > button:last-of-type');
+    const idx = list.querySelectorAll('.list-edit-card').length + 1;
+    const card = document.createElement('div');
+    card.className = 'list-edit-card';
+    card.dataset.type = 'project';
+    card.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <strong style="font-size:13px;">项目 #${idx}</strong>
+        <button type="button" class="btn btn-danger btn-sm" onclick="this.closest('.list-edit-card').remove()">删除</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div class="form-group" style="margin-bottom:8px;"><label>项目名称</label><input type="text" data-field="name"></div>
+        <div class="form-group" style="margin-bottom:8px;"><label>技术栈</label><input type="text" data-field="tech_stack"></div>
+      </div>
+      <div class="form-group" style="margin-bottom:8px;"><label>描述</label><textarea rows="2" data-field="description"></textarea></div>
+      <div class="sub-highlights">
+        <label style="font-size:12px;">亮点</label>
+        <button type="button" class="btn btn-secondary btn-sm" style="margin-top:4px;" onclick="resumeEditor.addSubHighlight(this)">+ 添加亮点</button>
+      </div>`;
+    list.insertBefore(card, addBtn);
+  },
+
+  /* ---- 数据收集 ---- */
+  _collectData() {
+    const data = {};
+    // 标量字段
+    document.querySelectorAll('#resume-card .scalar-input').forEach(el => {
+      const name = el.getAttribute('name');
+      if (name) data[name] = el.value;
+    });
+    // 技术栈 (保持为列表)
+    data.tech_stack = this._getTagValues('tech-stack-tags');
+    // 核心亮点
+    data.highlights = Array.from(document.querySelectorAll('#highlights-list .highlight-input')).map(i => i.value).filter(Boolean);
+    // 工作经历
+    data.work_experience = Array.from(document.querySelectorAll('#work-exp-list .list-edit-card')).map(card => {
+      const obj = {};
+      card.querySelectorAll('[data-field]').forEach(el => { obj[el.dataset.field] = el.value; });
+      obj.highlights = Array.from(card.querySelectorAll('.sub-hl-input')).map(i => i.value).filter(Boolean);
+      return obj;
+    });
+    // 项目
+    data.projects = Array.from(document.querySelectorAll('#projects-list .list-edit-card')).map(card => {
+      const obj = {};
+      card.querySelectorAll('[data-field]').forEach(el => { obj[el.dataset.field] = el.value; });
+      obj.highlights = Array.from(card.querySelectorAll('.sub-hl-input')).map(i => i.value).filter(Boolean);
+      return obj;
+    });
+    // 求职意向
+    data.job_preferences = {
+      target_cities: this._getTagValues('jp-target-cities'),
+      target_roles: this._getTagValues('jp-target-roles'),
+      salary_min: parseInt(document.getElementById('jp-salary-min').value) || null,
+      salary_max: parseInt(document.getElementById('jp-salary-max').value) || null,
+      work_type: document.getElementById('jp-work-type').value || null,
+      priorities: this._getTagValues('jp-priorities'),
+      deal_breakers: this._getTagValues('jp-deal-breakers'),
+    };
+    return data;
+  },
+};
+</script>

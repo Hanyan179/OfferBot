@@ -55,7 +55,7 @@ async def main():
     print("Test 2: Planner 生成执行计划")
     print("=" * 50)
     try:
-        registry = create_tool_registry()
+        registry, _skill_loader = create_tool_registry()
         planner = Planner(
             tool_registry=registry,
             llm_client=client,

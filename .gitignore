@@ -46,6 +46,8 @@ boss-agent/web/.files/
 boss-agent/data/knowledge/*
 boss-agent/data/resume/*
 boss-agent/data/index/*
+boss-agent/data/browser_data/
+boss-agent/data/boss_cookies.json
 !boss-agent/data/**/.gitkeep
 
 # === 参考代码（不开源） ===

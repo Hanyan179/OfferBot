@@ -1,0 +1,49 @@
+{
+  "scenarios": {
+    "basic_chat": {
+      "name": "基本对话",
+      "description": "验证基本对话能力，无异常",
+      "messages": [
+        {"message": "你好，我想找工作"}
+      ],
+      "checks": {
+        "has_reply": true,
+        "min_reply_length": 5
+      }
+    },
+    "tool_usage": {
+      "name": "工具调用",
+      "description": "验证是否调用了搜索相关 tool",
+      "messages": [
+        {"message": "帮我搜索上海 AI 岗位"}
+      ],
+      "checks": {
+        "has_reply": true,
+        "has_tool_calls": true
+      }
+    },
+    "tool_chinese_name": {
+      "name": "Tool 中文名",
+      "description": "触发 tool 调用，验证返回的 display_name 为中文",
+      "messages": [
+        {"message": "帮我搜索上海 AI 岗位"}
+      ],
+      "checks": {
+        "has_reply": true,
+        "has_tool_calls": true,
+        "tool_display_name_is_chinese": true
+      }
+    },
+    "conversation_flow": {
+      "name": "多轮对话",
+      "description": "验证上下文连贯性",
+      "messages": [
+        {"message": "你好，我是一名 Python 开发者"},
+        {"message": "帮我推荐适合我的岗位类型"}
+      ],
+      "checks": {
+        "has_reply": true
+      }
+    }
+  }
+}

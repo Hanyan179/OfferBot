@@ -27,6 +27,7 @@ from tools.data.memory_tools import (
     SearchMemoryTool,
     UpdateMemoryTool,
     DeleteMemoryTool,
+    GetUserCognitiveModelTool,
     CATEGORY_FILE_MAP,
 )
 
@@ -39,6 +40,7 @@ _ALLOWED_TOOLS: dict[str, type] = {
     "search_memory": SearchMemoryTool,
     "update_memory": UpdateMemoryTool,
     "delete_memory": DeleteMemoryTool,
+    "get_user_cognitive_model": GetUserCognitiveModelTool,
 }
 
 EXTRACT_PROMPT = """\
@@ -48,21 +50,51 @@ EXTRACT_PROMPT = """\
 
 {categories}
 
-## 规则
+## 已有记忆（当前状态）
 
-1. 只提取用户明确说出或强烈暗示的信息
-2. 不要提取可以从简历数据库直接查到的结构化字段（姓名、电话、邮箱等）
-3. 重点提取软性信息：想法、目标、偏好、性格、兴趣、价值观等
-4. 先调用 get_memory 检查对应分类是否已有类似条目，避免重复
-5. 如果已有类似条目但信息更新了（如目标城市变了），调用 update_memory 更新
-6. 如果是全新信息，调用 save_memory 保存
-7. 每条记忆的 title 应简短概括（5-15字），content 应详细描述
-8. 如果对话中没有可提取的用户信息，不要调用任何工具
-9. 不要输出任何文本回复，只通过工具调用保存记忆
+{existing_memory}
+
+## 核心原则：更新优先，避免膨胀
+
+记忆系统的目标是维护一份**精炼、准确、无重复**的用户画像，不是对话日志。
+上面的"已有记忆"就是当前所有记忆的标题列表，你必须基于它来决策。
+
+## 决策规则
+
+对比对话中的新信息和已有记忆，选择正确的操作：
+
+| 情况 | 操作 |
+|------|------|
+| 已有记忆中有相同或相似主题的条目 | **update_memory** — 用合并后的完整内容替换旧条目 |
+| 已有记忆中无相关条目，且信息有价值 | **save_memory** — 新增 |
+| 信息已存在且无变化 | **不操作** |
+| 多个条目内容重叠 | **delete_memory** 删旧 + **save_memory** 写合并版 |
+
+## 写入要求
+- update_memory 时：title 必须与已有条目的标题**完全一致**（从上面的已有记忆中复制）
+- save_memory 时：title 要具体（如"目标城市偏好"而非"求职信息"）
+- 每个分类下同一主题**只保留一个条目**
+
+## 不要提取的内容
+- 简历中的结构化字段（姓名、电话、邮箱等）— 这些在数据库里
+- 用户的临时性提问（"帮我搜岗位"不是记忆）
+- AI 的回复内容
+
+## 要提取的内容
+- 想法、目标、偏好、价值观
+- 求职策略变化
+- 性格特征、沟通风格
+- 对特定事物的态度
 
 ## 对话内容
 
 {conversation}
+
+## 执行
+
+分析上面的对话，如果有值得提取的信息，直接调用 save_memory 或 update_memory。
+如果需要查看某个已有条目的详细内容再决定如何合并，可以先调用 get_memory(category)。
+如果对话中没有值得提取的信息，不要调用任何工具。
 """
 
 # 子 Agent 最大工具调用轮数（防止无限循环）
@@ -110,6 +142,18 @@ class MemoryExtractor:
                 parts.append(f"助手: {content}")
         return "\n\n".join(parts)
 
+    async def _load_existing_memory_summary(self, context: dict[str, Any]) -> str:
+        """程序层预读所有已有记忆的标题列表，供 prompt 注入。"""
+        tool = self._tool_registry.get_tool("get_user_cognitive_model")
+        if tool is None:
+            return ""
+        try:
+            result = await tool.execute({}, context)
+            return result.get("summary", "")
+        except Exception as e:
+            logger.warning("预读记忆摘要失败: %s", e)
+            return ""
+
     async def extract(
         self,
         recent_messages: list[dict],
@@ -141,8 +185,12 @@ class MemoryExtractor:
         if not conversation_text.strip():
             return
 
+        # 程序层预读已有记忆摘要，直接注入 prompt
+        existing_memory = await self._load_existing_memory_summary(ctx)
+
         prompt = EXTRACT_PROMPT.format(
             categories=categories_text,
+            existing_memory=existing_memory or "（暂无记忆）",
             conversation=conversation_text,
         )
 

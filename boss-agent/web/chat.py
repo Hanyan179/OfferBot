@@ -28,7 +28,6 @@ from db.database import Database
 from agent.bootstrap import bootstrap
 from tools.data.chat_history import ChatHistoryStore
 from tools.data.memory_tools import GetUserCognitiveModelTool
-from agent.skill_loader import SkillLoader
 from agent.system_prompt import build_full_system_prompt
 
 logger = logging.getLogger(__name__)
@@ -42,7 +41,7 @@ SCENARIO_CARDS: list[dict[str, str]] = [
 
 # 厂商预设（和 app.py 保持一致）
 PROVIDER_PRESETS = {
-    "dashscope": {"base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "model": "qwen3.5-flash"},
+    "dashscope": {"base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "model": "qwen3.6-plus"},
     "openai": {"base_url": "https://api.openai.com/v1", "model": "gpt-4o"},
     "gemini": {"base_url": "https://generativelanguage.googleapis.com/v1beta/openai/", "model": "gemini-2.5-flash"},
     "deepseek": {"base_url": "https://api.deepseek.com/v1", "model": "deepseek-chat"},
@@ -85,6 +84,8 @@ async def _init_agent(db: Database, api_key: str, base_url: str, model: str) -> 
         components = bootstrap(db=db, api_key=api_key, model=model, base_url=base_url)
         cl.user_session.set("planner", components["planner"])
         cl.user_session.set("executor", components["executor"])
+        cl.user_session.set("getjob_client", components["getjob_client"])
+        cl.user_session.set("skill_loader", components["skill_loader"])
         cl.user_session.set("agent_ready", True)
         cl.user_session.set("current_model", model)
         return True
@@ -150,9 +151,9 @@ async def on_chat_start():
     except Exception as e:
         logger.warning("加载记忆画像失败: %s", e)
 
-    # --- 加载 Skills 摘要 ---
-    skill_loader = SkillLoader()
-    skills_section = skill_loader.to_prompt_section()
+    # --- 加载 Skills 摘要（在 Agent 初始化后从 bootstrap 的 skill_loader 获取） ---
+    # 先用空 skills_section 构建 system prompt，Agent 初始化后再更新
+    skills_section = ""
 
     # --- 构建完整 System Prompt（基础 + 记忆指引 + Skills） ---
     full_system_prompt = build_full_system_prompt(skills_prompt_section=skills_section)
@@ -173,6 +174,13 @@ async def on_chat_start():
         await _init_agent(db, **llm_config)
     else:
         cl.user_session.set("agent_ready", False)
+
+    # --- Agent 初始化后，用 bootstrap 的 skill_loader 重新生成 Skills 摘要 ---
+    skill_loader = cl.user_session.get("skill_loader")
+    if skill_loader is not None:
+        skills_section = skill_loader.to_prompt_section()
+        full_system_prompt = build_full_system_prompt(skills_prompt_section=skills_section)
+        cl.user_session.set("system_prompt", full_system_prompt)
 
     if not cl.user_session.get("agent_ready"):
         # 未配置 — 固定欢迎语 + 引导配置
@@ -346,7 +354,7 @@ async def handle_user_message(content: str):
     assistant_text = ""
     db = cl.user_session.get("db")
 
-    async for event in executor.chat(messages=history, context={"db": db, "llm_client": executor._llm}, system_prompt=system_prompt):
+    async for event in executor.chat(messages=history, context={"db": db, "llm_client": executor._llm, "getjob_client": cl.user_session.get("getjob_client")}, system_prompt=system_prompt):
         if event.type == "thinking":
             # 思考过程 — 折叠展示
             thinking_text = event.data.get("content", "")

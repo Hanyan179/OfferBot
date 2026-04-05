@@ -116,6 +116,63 @@ def _parse_sections(content: str) -> list[dict]:
     return sections
 
 
+import re as _re
+
+_STOPWORDS = frozenset({"的", "与", "和", "及", "了", "在", "是", "有", "对", "中", "个"})
+
+
+def _tokenize(text: str) -> set[str]:
+    """将标题拆成关键词集合（中文 2-gram + 单字，英文整词）。"""
+    cleaned = _re.sub(r"[^\w\u4e00-\u9fff]", " ", text.lower())
+    tokens: set[str] = set()
+    for part in cleaned.split():
+        if any("\u4e00" <= c <= "\u9fff" for c in part):
+            # 中文：单字 + 2-gram（去停用词）
+            for c in part:
+                if c not in _STOPWORDS:
+                    tokens.add(c)
+            for i in range(len(part) - 1):
+                tokens.add(part[i : i + 2])
+        else:
+            if part not in _STOPWORDS and len(part) > 0:
+                tokens.add(part)
+    return tokens
+
+
+def _find_similar_section(
+    title: str, sections: list[dict], threshold: float = 0.4
+) -> dict | None:
+    """
+    在已有 sections 中找与 title 最相似的条目。
+
+    使用关键词重叠度（Jaccard 系数）。超过 threshold 且是最高分的返回，
+    否则返回 None（表示是真正的新条目）。
+    """
+    if not sections:
+        return None
+
+    new_tokens = _tokenize(title)
+    if not new_tokens:
+        return None
+
+    best_score = 0.0
+    best_section = None
+    for section in sections:
+        old_tokens = _tokenize(section["title"])
+        if not old_tokens:
+            continue
+        intersection = new_tokens & old_tokens
+        union = new_tokens | old_tokens
+        score = len(intersection) / len(union)
+        if score > best_score:
+            best_score = score
+            best_section = section
+
+    if best_score >= threshold:
+        return best_section
+    return None
+
+
 class SaveMemoryTool(Tool):
     """保存记忆条目到对应分类的 Markdown 文件。"""
 
@@ -167,19 +224,27 @@ class SaveMemoryTool(Tool):
         file_path = _get_file_path(category, memory_dir)
 
         now = datetime.now().strftime("%Y-%m-%d %H:%M")
-
-        # 构建新条目
-        entry = f"\n## {title}\n{content}\n\n> 来源: {source_id} | 提取于: {now}\n"
+        entry_text = f"## {title}\n{content}\n\n> 来源: {source_id} | 提取于: {now}"
 
         if file_path.exists():
             existing = file_path.read_text(encoding="utf-8")
-            file_path.write_text(existing.rstrip("\n") + "\n" + entry, encoding="utf-8")
-        else:
-            # 新文件：写入一级标题 + 条目
-            display_name = _get_display_name(category)
-            file_path.write_text(f"# {display_name}\n{entry}", encoding="utf-8")
+            sections = _parse_sections(existing)
 
-        return {"saved": True, "category": category, "title": title}
+            # 模糊去重：找同分类下最相似的标题
+            similar = _find_similar_section(title, sections)
+            if similar is not None:
+                # 替换旧条目而不是追加
+                existing = existing.replace(similar["raw"], entry_text)
+                file_path.write_text(existing, encoding="utf-8")
+                return {"saved": True, "category": category, "title": title,
+                        "action": "replaced", "old_title": similar["title"]}
+
+            file_path.write_text(existing.rstrip("\n") + "\n\n" + entry_text + "\n", encoding="utf-8")
+        else:
+            display_name = _get_display_name(category)
+            file_path.write_text(f"# {display_name}\n\n{entry_text}\n", encoding="utf-8")
+
+        return {"saved": True, "category": category, "title": title, "action": "created"}
 
 
 class GetMemoryTool(Tool):
@@ -342,20 +407,25 @@ class UpdateMemoryTool(Tool):
         content = file_path.read_text(encoding="utf-8")
         sections = _parse_sections(content)
 
-        found = False
-        now = datetime.now().strftime("%Y-%m-%d %H:%M")
+        # 先精确匹配，再模糊匹配
+        target = None
         for section in sections:
             if section["title"] == title:
-                new_raw = f"## {title}\n{new_content}\n\n> 更新于: {now}"
-                content = content.replace(section["raw"], new_raw)
-                found = True
+                target = section
                 break
+        if target is None:
+            target = _find_similar_section(title, sections)
 
-        if not found:
+        if target is None:
             return {"updated": False, "error": f"未找到标题为 '{title}' 的条目"}
 
+        now = datetime.now().strftime("%Y-%m-%d %H:%M")
+        new_raw = f"## {title}\n{new_content}\n\n> 更新于: {now}"
+        content = content.replace(target["raw"], new_raw)
+
         file_path.write_text(content, encoding="utf-8")
-        return {"updated": True, "category": category, "title": title}
+        return {"updated": True, "category": category, "title": title,
+                "matched_title": target["title"]}
 
 
 class DeleteMemoryTool(Tool):
