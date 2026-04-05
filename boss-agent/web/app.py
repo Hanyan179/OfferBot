@@ -689,7 +689,13 @@ async def api_test_chat(request: Request):
             status_code=500,
         )
 
-    client = genai.Client(api_key=api_key)
+    import httpx as _httpx
+    _proxy_url = "http://127.0.0.1:7893"
+    _http_client = _httpx.Client(proxy=_proxy_url, timeout=60)
+    client = genai.Client(
+        api_key=api_key,
+        http_options={"httpxClient": _http_client},
+    )
 
     # 将 ToolRegistry 的 schemas 转为 google-genai 格式
     func_decls = []
@@ -772,7 +778,7 @@ async def api_test_chat(request: Request):
                 tool = registry.get_tool(tool_name)
                 tc_report = {
                     "name": tool_name,
-                    "display_name": tool_name,
+                    "display_name": registry.get_display_name(tool_name),
                     "params": tool_args,
                     "result": None,
                     "success": False,
@@ -833,15 +839,66 @@ async def api_test_chat(request: Request):
         "token_usage": {"prompt": 0, "completion": 0},
     })
 
-    return JSONResponse({
-        "ok": True,
-        "reply": reply,
-        "tool_calls": tool_calls,
-        "conversation_id": conversation_id or "",
-        "total_duration_ms": total_duration_ms,
-        "model": model,
-        "token_usage": {"prompt": 0, "completion": 0},
-    })
+
+# ---- 对话管理 API ----
+
+def _get_conversation_manager():
+    """获取 ConversationManager 实例（懒初始化，缓存在 app.state 上）。"""
+    if not hasattr(app.state, "conversation_manager") or app.state.conversation_manager is None:
+        from agent.conversation_manager import ConversationManager
+        from tools.data.chat_history import ChatHistoryStore
+        store = ChatHistoryStore()
+        app.state.conversation_manager = ConversationManager(store)
+    return app.state.conversation_manager
+
+
+@app.get("/api/conversations")
+async def api_list_conversations():
+    try:
+        mgr = _get_conversation_manager()
+        conversations = await mgr.list_conversations()
+        return JSONResponse({"conversations": conversations})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@app.post("/api/conversations")
+async def api_create_conversation():
+    try:
+        mgr = _get_conversation_manager()
+        conversation = await mgr.create_conversation()
+        return JSONResponse(conversation)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@app.get("/api/conversations/{conversation_id}/messages")
+async def api_get_conversation_messages(conversation_id: str):
+    try:
+        mgr = _get_conversation_manager()
+        messages = await mgr.get_conversation_messages(conversation_id)
+        return JSONResponse({"messages": messages})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@app.delete("/api/conversations/{conversation_id}")
+async def api_delete_conversation(conversation_id: str):
+    try:
+        mgr = _get_conversation_manager()
+        # 如果删除的是活跃对话，先创建新对话
+        active_id = await mgr._store.get_active_conversation_id()
+        if active_id == conversation_id:
+            new_conv = await mgr.create_conversation()
+            # 如果新对话 ID 与待删除 ID 相同（同一秒内），跳过删除
+            if new_conv["id"] == conversation_id:
+                return JSONResponse({"ok": True})
+        success = await mgr.delete_conversation(conversation_id)
+        if success:
+            return JSONResponse({"ok": True})
+        return JSONResponse({"ok": False, "error": "删除失败"}, status_code=500)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 
 # ---- 挂载 Chainlit ----

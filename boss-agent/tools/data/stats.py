@@ -20,6 +20,10 @@ class GetStatsTool(Tool):
         return "get_stats"
 
     @property
+    def display_name(self) -> str:
+        return "投递统计"
+
+    @property
     def description(self) -> str:
         return "查询投递统计数据"
 

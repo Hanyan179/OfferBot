@@ -3,7 +3,7 @@ name: 猎聘岗位采集与投递
 description: 通过 getjob 服务控制猎聘平台的岗位搜索、爬取、匹配分析和精准投递
 when_to_use: 当用户需要搜索岗位、爬取数据、投递简历、查看投递进度时
 memory_categories: [job_sprint_goals, career_planning, key_points]
-allowed-tools: [getjob_service_manage, platform_status, platform_start_task, platform_stop_task, platform_get_config, platform_update_config, sync_jobs, platform_stats, query_jobs, get_user_profile, get_memory]
+allowed-tools: [getjob_service_manage, platform_status, platform_start_task, platform_stop_task, platform_get_config, platform_update_config, sync_jobs, platform_stats, query_jobs, get_user_profile, get_memory, fetch_job_detail]
 ---
 
 ## 场景描述
@@ -152,3 +152,33 @@ platform_stop_task(platform="liepin")
 - 不要在一次对话中反复启动任务，注意平台风控
 - 每次操作前都要检查状态，不要假设上一步的状态还有效
 - 用户画像中的条件是参考，用户当前说的话永远优先
+
+## 精准搜索策略（重要）
+
+**不要盲目爬取大量岗位。** 搜索条件必须基于用户画像精准构建：
+
+1. 调用 `get_user_profile()` 获取：target_cities、target_roles、salary_min/max、skills、years_of_experience
+2. 调用 `get_memory(category="job_sprint_goals")` 获取最新求职目标
+3. 基于以上信息构建精准的 keywords + city + salaryCode
+4. keywords 应该具体（如 "AI Agent 工程师" 而非 "工程师"）
+5. 宁可搜索条件严格、结果少而准，也不要条件宽泛、结果多而杂
+
+## 场景 E：爬取岗位详情（获取完整 JD）
+
+用户说"帮我看看这个岗位的详细要求"、"分析一下这几个岗位"、"哪个更适合我"等。
+
+**触发条件**：需要分析岗位匹配度、生成定制简历、或用户想了解具体 JD 时。
+
+### 执行步骤
+
+1. 确定要爬取详情的岗位（通过 job_id 或 url）
+2. 调用 `fetch_job_detail(job_id=xxx)` 爬取详情页
+   - 返回 JD 文本，自动写回数据库的 raw_jd 字段
+   - 每次只爬一个，爬完再爬下一个（避免触发风控）
+   - 两次爬取之间建议间隔几秒
+3. 基于 JD 内容 + 用户画像，分析匹配度
+4. 告诉用户：这个岗位要求什么、你匹配什么、差距在哪
+
+### 注意
+- 不要一次性爬取大量详情页，按需爬取（用户感兴趣的才爬）
+- 已有 raw_jd 的岗位不需要重复爬取

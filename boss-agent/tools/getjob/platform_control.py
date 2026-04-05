@@ -35,6 +35,10 @@ class PlatformStartTaskTool(Tool):
         return "platform_start_task"
 
     @property
+    def display_name(self) -> str:
+        return "启动平台任务"
+
+    @property
     def description(self) -> str:
         return "启动 getjob 平台的自动投递/爬取任务。支持 liepin / zhilian。"
 
@@ -74,6 +78,10 @@ class PlatformStopTaskTool(Tool):
     @property
     def name(self) -> str:
         return "platform_stop_task"
+
+    @property
+    def display_name(self) -> str:
+        return "停止平台任务"
 
     @property
     def description(self) -> str:

@@ -23,6 +23,10 @@ class GetUserProfileTool(Tool):
         return "get_user_profile"
 
     @property
+    def display_name(self) -> str:
+        return "获取用户档案"
+
+    @property
     def description(self) -> str:
         return "获取用户的个人档案，包括基本信息、技能、工作经历、求职意向等。用于了解用户当前状态。"
 
@@ -109,6 +113,10 @@ class UpdateUserProfileTool(Tool):
     @property
     def name(self) -> str:
         return "update_user_profile"
+
+    @property
+    def display_name(self) -> str:
+        return "更新用户档案"
 
     @property
     def description(self) -> str:

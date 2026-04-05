@@ -26,6 +26,10 @@ class ExportCSVTool(Tool):
         return "export_csv"
 
     @property
+    def display_name(self) -> str:
+        return "导出CSV"
+
+    @property
     def description(self) -> str:
         return "导出投递记录为 CSV"
 

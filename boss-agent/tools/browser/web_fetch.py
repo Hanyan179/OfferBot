@@ -116,6 +116,10 @@ class WebFetchTool(Tool):
         return "web_fetch"
 
     @property
+    def display_name(self) -> str:
+        return "网页抓取"
+
+    @property
     def description(self) -> str:
         return (
             "抓取指定 URL 的网页内容，转换为 Markdown 格式返回。"

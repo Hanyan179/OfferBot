@@ -20,6 +20,10 @@ class DeleteJobsTool(Tool):
         return "delete_jobs"
 
     @property
+    def display_name(self) -> str:
+        return "删除岗位"
+
+    @property
     def description(self) -> str:
         return (
             "批量删除本地岗位数据。支持按平台（liepin/zhilian）、"
@@ -132,6 +136,10 @@ class JobCountTool(Tool):
     @property
     def name(self) -> str:
         return "job_count"
+
+    @property
+    def display_name(self) -> str:
+        return "岗位统计"
 
     @property
     def description(self) -> str:

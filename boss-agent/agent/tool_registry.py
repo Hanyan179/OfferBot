@@ -33,6 +33,11 @@ class Tool(ABC):
         ...
 
     @property
+    def display_name(self) -> str:
+        """Tool 中文显示名，默认回退到 name"""
+        return self.name
+
+    @property
     def is_concurrency_safe(self) -> bool:
         """是否可并发执行（只读 Tool 返回 True）"""
         return False
@@ -111,6 +116,11 @@ class ToolRegistry:
                 },
             })
         return schemas
+
+    def get_display_name(self, tool_name: str) -> str:
+        """获取 Tool 的中文显示名，不存在时回退到 tool_name。"""
+        tool = self._tools.get(tool_name)
+        return tool.display_name if tool else tool_name
 
     def get_tools_by_category(self, category: str) -> list[Tool]:
         """按分类获取 Tool 列表。"""

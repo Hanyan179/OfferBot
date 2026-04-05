@@ -28,6 +28,10 @@ class WebSearchTool(Tool):
         return "web_search"
 
     @property
+    def display_name(self) -> str:
+        return "网页搜索"
+
+    @property
     def description(self) -> str:
         return "搜索互联网最新信息。支持搜索公司背景、技术趋势、薪资水平、行业动态等。"
 

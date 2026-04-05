@@ -23,6 +23,10 @@ class PlatformStatsTool(Tool):
         return "platform_stats"
 
     @property
+    def display_name(self) -> str:
+        return "平台投递统计"
+
+    @property
     def description(self) -> str:
         return (
             "查询 getjob 平台投递统计数据（KPI 汇总 + 图表数据）。"

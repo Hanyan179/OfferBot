@@ -131,6 +131,14 @@ class GetjobClient:
         params = self._build_filter_params(**filters)
         return await self._request("GET", f"/api/{platform}/list", params=params)
 
+    async def fetch_job_detail(self, platform: str, url: str) -> dict:
+        """爬取单个岗位详情页 JD。"""
+        return await self._request("GET", f"/api/{platform}/job-detail", params={"url": url})
+
+    async def batch_fetch_detail(self, platform: str, limit: int = 10) -> dict:
+        """批量爬取岗位详情页 JD（从数据库取无 JD 的岗位）。"""
+        return await self._request("POST", f"/api/{platform}/batch-detail", params={"limit": limit})
+
     async def get_stats(self, platform: str, **filters: Any) -> dict:
         params = self._build_filter_params(**filters)
         return await self._request("GET", f"/api/{platform}/stats", params=params)

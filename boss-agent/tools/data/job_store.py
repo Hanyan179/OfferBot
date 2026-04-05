@@ -22,6 +22,10 @@ class SaveJobTool(Tool):
         return "save_job"
 
     @property
+    def display_name(self) -> str:
+        return "保存岗位"
+
+    @property
     def description(self) -> str:
         return "保存岗位数据到数据库（去重）"
 

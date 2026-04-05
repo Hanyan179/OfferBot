@@ -21,6 +21,10 @@ class SaveApplicationTool(Tool):
         return "save_application"
 
     @property
+    def display_name(self) -> str:
+        return "保存投递记录"
+
+    @property
     def description(self) -> str:
         return "记录投递信息"
 

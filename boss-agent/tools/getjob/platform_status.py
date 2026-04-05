@@ -23,6 +23,10 @@ class PlatformStatusTool(Tool):
         return "platform_status"
 
     @property
+    def display_name(self) -> str:
+        return "平台状态查询"
+
+    @property
     def description(self) -> str:
         return "查询 getjob 平台状态：是否已登录、是否有任务在运行。支持 liepin / zhilian。"
 

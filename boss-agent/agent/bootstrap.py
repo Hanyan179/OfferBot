@@ -50,6 +50,7 @@ from tools.getjob.platform_config import PlatformGetConfigTool, PlatformUpdateCo
 from tools.getjob.platform_sync import SyncJobsTool
 from tools.getjob.platform_stats import PlatformStatsTool
 from tools.getjob.service_manager import GetjobServiceManagerTool
+from tools.getjob.fetch_detail import FetchJobDetailTool
 
 # AI Tools
 from agent.skill_loader import SkillLoader
@@ -101,6 +102,7 @@ def create_tool_registry() -> tuple[ToolRegistry, SkillLoader]:
     registry.register(SyncJobsTool())
     registry.register(PlatformStatsTool())
     registry.register(GetjobServiceManagerTool())
+    registry.register(FetchJobDetailTool())
 
     # --- AI Tools ---
     skill_loader = SkillLoader(registry=registry)

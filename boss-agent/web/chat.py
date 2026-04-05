@@ -16,6 +16,7 @@ import json
 import logging
 import sys
 from pathlib import Path
+from urllib.parse import parse_qs
 
 import chainlit as cl
 
@@ -86,6 +87,7 @@ async def _init_agent(db: Database, api_key: str, base_url: str, model: str) -> 
         cl.user_session.set("executor", components["executor"])
         cl.user_session.set("getjob_client", components["getjob_client"])
         cl.user_session.set("skill_loader", components["skill_loader"])
+        cl.user_session.set("registry", components["registry"])
         cl.user_session.set("agent_ready", True)
         cl.user_session.set("current_model", model)
         return True
@@ -125,20 +127,59 @@ async def on_chat_start():
     chat_store = ChatHistoryStore()
     cl.user_session.set("chat_store", chat_store)
 
-    # 尝试恢复上次会话
-    active_conv_id = await chat_store.get_active_conversation_id()
+    # --- 解析 URL 参数 conv_id（对话切换） ---
+    requested_conv_id = None
+    try:
+        environ = getattr(cl.context.session, "environ", {}) or {}
+        query_string = environ.get("QUERY_STRING", "")
+        if query_string:
+            params = parse_qs(query_string)
+            requested_conv_id = params.get("conv_id", [None])[0]
+    except Exception as e:
+        logger.warning("解析 conv_id 参数失败: %s", e)
+
+    # --- 恢复或切换会话 ---
     restored_messages = []
-    if active_conv_id:
-        conv_id = active_conv_id
-        restored = await chat_store.load_history(conv_id)
-        if restored:
-            # 恢复对话历史到 chat_history（只保留 role + content）
-            history = [{"role": m["role"], "content": m["content"]} for m in restored if m.get("role") in ("user", "assistant", "system")]
-            cl.user_session.set("chat_history", history)
-            # 收集需要在 UI 上展示的历史消息
-            restored_messages = [m for m in restored if m.get("role") in ("user", "assistant")]
-    else:
-        conv_id = await chat_store.create_conversation()
+    conv_id = None
+
+    if requested_conv_id:
+        # 前端指定了 conv_id，尝试加载该对话
+        try:
+            conv_path = chat_store._conversation_path(requested_conv_id)
+            if not conv_path.exists():
+                # 文件不存在：显示错误提示，回退到最新对话
+                logger.warning("指定对话文件不存在: %s", requested_conv_id)
+                await cl.Message(content=f"⚠️ 对话 `{requested_conv_id}` 不存在，已加载最新对话。").send()
+                requested_conv_id = None  # 回退
+            else:
+                restored = await chat_store.load_history(requested_conv_id)
+                conv_id = requested_conv_id
+                if restored:
+                    history = [{"role": m["role"], "content": m["content"]} for m in restored if m.get("role") in ("user", "assistant", "system")]
+                    cl.user_session.set("chat_history", history)
+                    restored_messages = [m for m in restored if m.get("role") in ("user", "assistant")]
+        except OSError as e:
+            # 文件系统错误：显示错误提示，回退到最新对话
+            logger.error("加载指定对话时文件系统错误: %s, %s", requested_conv_id, e)
+            await cl.Message(content=f"⚠️ 加载对话失败（文件系统错误），已加载最新对话。").send()
+            requested_conv_id = None  # 回退
+        except Exception as e:
+            logger.error("加载指定对话时发生异常: %s, %s", requested_conv_id, e)
+            await cl.Message(content=f"⚠️ 加载对话失败，已加载最新对话。").send()
+            requested_conv_id = None  # 回退
+
+    if conv_id is None:
+        # 没有指定 conv_id 或指定的 conv_id 加载失败，使用现有逻辑
+        active_conv_id = await chat_store.get_active_conversation_id()
+        if active_conv_id:
+            conv_id = active_conv_id
+            restored = await chat_store.load_history(conv_id)
+            if restored:
+                history = [{"role": m["role"], "content": m["content"]} for m in restored if m.get("role") in ("user", "assistant", "system")]
+                cl.user_session.set("chat_history", history)
+                restored_messages = [m for m in restored if m.get("role") in ("user", "assistant")]
+        else:
+            conv_id = await chat_store.create_conversation()
 
     cl.user_session.set("conversation_id", conv_id)
 
@@ -372,7 +413,9 @@ async def handle_user_message(content: str):
         elif event.type == "tool_start":
             tool_name = event.data.get("tool_name", "unknown")
             tool_args = event.data.get("arguments", {})
-            current_step = cl.Step(name=f"🔧 {tool_name}", type="tool")
+            registry = cl.user_session.get("registry")
+            display_name = registry.get_display_name(tool_name) if registry else tool_name
+            current_step = cl.Step(name=f"🔧 {display_name}", type="tool")
             current_step.input = json.dumps(tool_args, ensure_ascii=False, indent=2) if tool_args else "(无参数)"
             await current_step.__aenter__()
 

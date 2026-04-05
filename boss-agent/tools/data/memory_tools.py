@@ -181,6 +181,10 @@ class SaveMemoryTool(Tool):
         return "save_memory"
 
     @property
+    def display_name(self) -> str:
+        return "保存记忆"
+
+    @property
     def description(self) -> str:
         return "保存一条用户记忆。在对话中发现用户的想法、目标、性格、兴趣等信息时调用。"
 
@@ -255,6 +259,10 @@ class GetMemoryTool(Tool):
         return "get_memory"
 
     @property
+    def display_name(self) -> str:
+        return "读取记忆"
+
+    @property
     def description(self) -> str:
         return "读取指定分类的所有记忆内容。"
 
@@ -298,6 +306,10 @@ class SearchMemoryTool(Tool):
     @property
     def name(self) -> str:
         return "search_memory"
+
+    @property
+    def display_name(self) -> str:
+        return "搜索记忆"
 
     @property
     def description(self) -> str:
@@ -363,6 +375,10 @@ class UpdateMemoryTool(Tool):
     @property
     def name(self) -> str:
         return "update_memory"
+
+    @property
+    def display_name(self) -> str:
+        return "更新记忆"
 
     @property
     def description(self) -> str:
@@ -436,6 +452,10 @@ class DeleteMemoryTool(Tool):
         return "delete_memory"
 
     @property
+    def display_name(self) -> str:
+        return "删除记忆"
+
+    @property
     def description(self) -> str:
         return "删除指定分类中某个记忆条目。通过标题定位条目。"
 
@@ -499,6 +519,10 @@ class ListMemoryCategoryTool(Tool):
         return "list_memory_categories"
 
     @property
+    def display_name(self) -> str:
+        return "记忆分类列表"
+
+    @property
     def description(self) -> str:
         return "返回所有记忆分类及每个分类下的条目数量。"
 
@@ -540,6 +564,10 @@ class GetUserCognitiveModelTool(Tool):
     @property
     def name(self) -> str:
         return "get_user_cognitive_model"
+
+    @property
+    def display_name(self) -> str:
+        return "用户画像摘要"
 
     @property
     def description(self) -> str:

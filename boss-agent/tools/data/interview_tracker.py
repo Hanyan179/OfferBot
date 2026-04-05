@@ -48,6 +48,10 @@ class UpdateInterviewStatusTool(Tool):
         return "update_interview_status"
 
     @property
+    def display_name(self) -> str:
+        return "更新面试状态"
+
+    @property
     def description(self) -> str:
         return "更新岗位面试状态"
 
@@ -150,6 +154,10 @@ class GetInterviewFunnelTool(Tool):
     @property
     def name(self) -> str:
         return "get_interview_funnel"
+
+    @property
+    def display_name(self) -> str:
+        return "面试漏斗统计"
 
     @property
     def description(self) -> str:

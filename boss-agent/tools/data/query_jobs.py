@@ -20,6 +20,10 @@ class QueryJobsTool(Tool):
         return "query_jobs"
 
     @property
+    def display_name(self) -> str:
+        return "搜索岗位"
+
+    @property
     def description(self) -> str:
         return (
             "查询本地数据库中已爬取的岗位数据。"

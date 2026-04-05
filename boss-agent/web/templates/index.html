@@ -48,6 +48,123 @@ html.dark .nav-links a.active { background: #0a84ff; color: #fff; }
 .tab-panel { display: none; height: 100%; overflow-y: auto; }
 .tab-panel.active { display: block; }
 .tab-panel iframe { width: 100%; height: 100%; border: none; }
+
+/* ===== 对话面板布局 ===== */
+.chat-layout { display: flex; height: 100%; overflow: hidden; }
+.chat-main { flex: 1; min-width: 0; height: 100%; }
+.chat-main iframe { width: 100%; height: 100%; border: none; }
+
+/* 侧边栏 */
+.conv-sidebar {
+  width: 260px; min-width: 260px; height: 100%;
+  display: flex; flex-direction: column;
+  border-right: .5px solid rgba(0,0,0,.1);
+  background: rgba(255,255,255,.6);
+  transition: margin-left .2s ease, opacity .15s;
+}
+.conv-sidebar.collapsed { margin-left: -260px; opacity: 0; pointer-events: none; }
+
+html.dark .conv-sidebar { background: rgba(30,30,30,.6); border-right-color: rgba(255,255,255,.08); }
+
+/* 侧边栏头部 */
+.conv-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 14px; border-bottom: .5px solid rgba(0,0,0,.06);
+}
+html.dark .conv-header { border-bottom-color: rgba(255,255,255,.06); }
+.conv-header-title { font-size: 13px; font-weight: 600; }
+
+.conv-btn {
+  font-size: 12px; font-weight: 500; cursor: pointer;
+  padding: 5px 10px; border-radius: 6px; border: none;
+  background: #007aff; color: #fff; transition: opacity .15s;
+}
+.conv-btn:hover { opacity: .85; }
+html.dark .conv-btn { background: #0a84ff; }
+
+/* 切换按钮 */
+.conv-toggle {
+  position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+  z-index: 10; cursor: pointer; border: none;
+  background: rgba(255,255,255,.85); border-radius: 0 6px 6px 0;
+  padding: 8px 4px; font-size: 14px; line-height: 1;
+  box-shadow: 1px 0 4px rgba(0,0,0,.08);
+  transition: left .2s ease, background .15s;
+}
+.conv-toggle:hover { background: rgba(240,240,240,.95); }
+html.dark .conv-toggle { background: rgba(50,50,50,.9); color: #e5e5e5; }
+html.dark .conv-toggle:hover { background: rgba(70,70,70,.95); }
+.chat-layout:not(.sidebar-collapsed) .conv-toggle { left: 260px; }
+.chat-layout.sidebar-collapsed .conv-toggle { left: 0; }
+
+/* 对话列表 */
+.conv-list { flex: 1; overflow-y: auto; padding: 6px 8px; }
+.conv-list::-webkit-scrollbar { width: 4px; }
+.conv-list::-webkit-scrollbar-thumb { background: rgba(0,0,0,.12); border-radius: 2px; }
+html.dark .conv-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,.12); }
+
+.conv-item {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 10px 10px; border-radius: 8px; cursor: pointer;
+  transition: background .12s; position: relative;
+}
+.conv-item:hover { background: rgba(0,0,0,.04); }
+.conv-item.active { background: rgba(0,122,255,.08); }
+html.dark .conv-item:hover { background: rgba(255,255,255,.05); }
+html.dark .conv-item.active { background: rgba(10,132,255,.12); }
+
+.conv-item-body { flex: 1; min-width: 0; }
+.conv-item-summary {
+  font-size: 13px; font-weight: 500; line-height: 1.4;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.conv-item-meta { font-size: 11px; color: #8e8e93; margin-top: 2px; }
+
+.conv-item-delete {
+  opacity: 0; border: none; background: none; cursor: pointer;
+  font-size: 14px; padding: 2px 4px; border-radius: 4px;
+  color: #8e8e93; transition: opacity .12s, color .12s;
+  flex-shrink: 0; margin-top: 1px;
+}
+.conv-item:hover .conv-item-delete { opacity: 1; }
+.conv-item-delete:hover { color: #ff3b30; }
+
+/* 活跃标记 */
+.conv-active-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #34c759; flex-shrink: 0; margin-top: 6px;
+}
+
+/* 空状态 */
+.conv-empty {
+  display: flex; align-items: center; justify-content: center;
+  height: 100%; color: #8e8e93; font-size: 13px;
+}
+
+/* 删除确认对话框 */
+.conv-confirm-overlay {
+  display: none; position: fixed; inset: 0; z-index: 200;
+  background: rgba(0,0,0,.3); align-items: center; justify-content: center;
+}
+.conv-confirm-overlay.show { display: flex; }
+.conv-confirm-box {
+  background: #fff; border-radius: 12px; padding: 20px 24px;
+  max-width: 320px; width: 90%; box-shadow: 0 8px 32px rgba(0,0,0,.15);
+  text-align: center;
+}
+html.dark .conv-confirm-box { background: #2c2c2e; color: #e5e5e5; }
+.conv-confirm-box p { font-size: 14px; margin-bottom: 16px; line-height: 1.5; }
+.conv-confirm-actions { display: flex; gap: 10px; justify-content: center; }
+.conv-confirm-actions button {
+  flex: 1; padding: 8px 0; border-radius: 8px; border: none;
+  font-size: 13px; font-weight: 500; cursor: pointer;
+}
+.conv-confirm-cancel { background: rgba(0,0,0,.06); color: inherit; }
+.conv-confirm-cancel:hover { background: rgba(0,0,0,.1); }
+html.dark .conv-confirm-cancel { background: rgba(255,255,255,.1); }
+html.dark .conv-confirm-cancel:hover { background: rgba(255,255,255,.15); }
+.conv-confirm-delete { background: #ff3b30; color: #fff; }
+.conv-confirm-delete:hover { opacity: .85; }
 </style>
 </head>
 <body>
@@ -68,7 +185,34 @@ html.dark .nav-links a.active { background: #0a84ff; color: #fff; }
 
 <div class="content-area">
   <div id="panel-chat" class="tab-panel active">
-    <iframe src="/chat" id="chatFrame"></iframe>
+    <div class="chat-layout" id="chatLayout">
+      <!-- 对话列表侧边栏 -->
+      <div class="conv-sidebar" id="convSidebar">
+        <div class="conv-header">
+          <span class="conv-header-title">对话记录</span>
+          <button class="conv-btn" id="btnNewConv">＋ 新建</button>
+        </div>
+        <div class="conv-list" id="convList">
+          <div class="conv-empty" id="convEmpty">暂无对话记录</div>
+        </div>
+      </div>
+      <!-- 切换按钮 -->
+      <button class="conv-toggle" id="convToggle" title="收起/展开对话列表">◀</button>
+      <!-- Chainlit iframe -->
+      <div class="chat-main">
+        <iframe src="/chat" id="chatFrame"></iframe>
+      </div>
+    </div>
+    <!-- 删除确认对话框 -->
+    <div class="conv-confirm-overlay" id="convConfirmOverlay">
+      <div class="conv-confirm-box">
+        <p>确定要删除这条对话吗？<br><small style="color:#8e8e93">删除后无法恢复</small></p>
+        <div class="conv-confirm-actions">
+          <button class="conv-confirm-cancel" id="btnConfirmCancel">取消</button>
+          <button class="conv-confirm-delete" id="btnConfirmDelete">删除</button>
+        </div>
+      </div>
+    </div>
   </div>
   <div id="panel-jobs" class="tab-panel">
     <iframe src="/page/jobs" loading="lazy"></iframe>
@@ -96,6 +240,8 @@ function switchToTab(tabName) {
   if (link) link.classList.add('active');
   const panel = document.getElementById('panel-' + tabName);
   if (panel) panel.classList.add('active');
+  // 切换到对话标签时刷新对话列表
+  if (tabName === 'chat') loadConversations();
 }
 
 document.querySelectorAll('.nav-links a[data-tab]').forEach(link => {
@@ -105,13 +251,11 @@ document.querySelectorAll('.nav-links a[data-tab]').forEach(link => {
 // ===== 深浅色主题（跟随 Chainlit） =====
 function applyNavTheme(dark) {
   document.documentElement.classList.toggle('dark', dark);
-  // 同步到 embed iframe
   document.querySelectorAll('.tab-panel:not(#panel-chat) iframe').forEach(iframe => {
     try { iframe.contentWindow.postMessage({ type: 'themeChange', dark: dark }, '*'); } catch(e) {}
   });
 }
 
-// 轮询 localStorage 检测 Chainlit 主题变化（最可靠的方式）
 let lastTheme = localStorage.getItem('colorMode') || 'light';
 applyNavTheme(lastTheme === 'dark');
 
@@ -123,21 +267,210 @@ setInterval(() => {
   }
 }, 500);
 
-// 监听 iframe 消息（设置保存等）
 window.addEventListener('message', (e) => {
   if (!e.data || !e.data.type) return;
-  if (e.data.type === 'switchTab') {
-    switchToTab(e.data.tab);
-  }
+  if (e.data.type === 'switchTab') switchToTab(e.data.tab);
   if (e.data.type === 'settingsSaved') {
     switchToTab('chat');
     const chatFrame = document.getElementById('chatFrame');
     if (chatFrame) chatFrame.src = chatFrame.src;
   }
-  if (e.data.type === 'chainlitThemeChange') {
-    applyNavTheme(e.data.dark);
+  if (e.data.type === 'chainlitThemeChange') applyNavTheme(e.data.dark);
+});
+
+// ===== 对话列表管理 =====
+let _convActiveId = null;
+let _convDeleteTarget = null;
+
+const convSidebar = document.getElementById('convSidebar');
+const convToggle = document.getElementById('convToggle');
+const chatLayout = document.getElementById('chatLayout');
+const convList = document.getElementById('convList');
+const convEmpty = document.getElementById('convEmpty');
+const btnNewConv = document.getElementById('btnNewConv');
+const confirmOverlay = document.getElementById('convConfirmOverlay');
+const btnConfirmCancel = document.getElementById('btnConfirmCancel');
+const btnConfirmDelete = document.getElementById('btnConfirmDelete');
+
+// 侧边栏折叠
+convToggle.addEventListener('click', () => {
+  const collapsed = convSidebar.classList.toggle('collapsed');
+  chatLayout.classList.toggle('sidebar-collapsed', collapsed);
+  convToggle.textContent = collapsed ? '▶' : '◀';
+});
+
+// 加载对话列表
+async function loadConversations() {
+  try {
+    const res = await fetch('/api/conversations');
+    const data = await res.json();
+    const convs = data.conversations || [];
+    renderConversations(convs);
+  } catch (e) {
+    console.error('加载对话列表失败:', e);
+  }
+}
+
+function renderConversations(convs) {
+  // 清空列表（保留空状态元素）
+  convList.querySelectorAll('.conv-item').forEach(el => el.remove());
+
+  if (!convs.length) {
+    convEmpty.style.display = 'flex';
+    return;
+  }
+  convEmpty.style.display = 'none';
+
+  // 找到活跃对话
+  const activeConv = convs.find(c => c.is_active);
+  if (activeConv) _convActiveId = activeConv.id;
+
+  convs.forEach(conv => {
+    const item = document.createElement('div');
+    item.className = 'conv-item' + (conv.is_active ? ' active' : '');
+    item.dataset.id = conv.id;
+
+    const dot = conv.is_active ? '<div class="conv-active-dot"></div>' : '';
+    const summary = conv.summary || '新对话';
+    const time = formatConvTime(conv.created_at);
+
+    item.innerHTML =
+      dot +
+      '<div class="conv-item-body">' +
+        '<div class="conv-item-summary">' + escapeHtml(summary) + '</div>' +
+        '<div class="conv-item-meta">' + escapeHtml(time) +
+          (conv.message_count ? ' · ' + conv.message_count + '条' : '') +
+        '</div>' +
+      '</div>' +
+      '<button class="conv-item-delete" title="删除对话">✕</button>';
+
+    // 点击切换对话
+    item.addEventListener('click', (e) => {
+      if (e.target.closest('.conv-item-delete')) return;
+      switchConversation(conv.id);
+    });
+
+    // 删除按钮
+    item.querySelector('.conv-item-delete').addEventListener('click', (e) => {
+      e.stopPropagation();
+      showDeleteConfirm(conv.id);
+    });
+
+    convList.appendChild(item);
+  });
+}
+
+// 切换对话
+async function switchConversation(convId) {
+  if (convId === _convActiveId) return;
+  const chatFrame = document.getElementById('chatFrame');
+  // 通过 iframe reload 带 conv_id 参数切换
+  const baseUrl = '/chat';
+  chatFrame.src = baseUrl + '?conv_id=' + encodeURIComponent(convId);
+  _convActiveId = convId;
+  // 更新高亮
+  convList.querySelectorAll('.conv-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.id === convId);
+    // 更新活跃点
+    const dot = el.querySelector('.conv-active-dot');
+    if (el.dataset.id === convId && !dot) {
+      const d = document.createElement('div');
+      d.className = 'conv-active-dot';
+      el.insertBefore(d, el.firstChild);
+    } else if (el.dataset.id !== convId && dot) {
+      dot.remove();
+    }
+  });
+}
+
+// 新建对话
+btnNewConv.addEventListener('click', async () => {
+  btnNewConv.disabled = true;
+  try {
+    const res = await fetch('/api/conversations', { method: 'POST' });
+    const data = await res.json();
+    if (data.id) {
+      const chatFrame = document.getElementById('chatFrame');
+      chatFrame.src = '/chat?conv_id=' + encodeURIComponent(data.id);
+      _convActiveId = data.id;
+      await loadConversations();
+    }
+  } catch (e) {
+    console.error('创建对话失败:', e);
+  } finally {
+    btnNewConv.disabled = false;
   }
 });
+
+// 删除确认
+function showDeleteConfirm(convId) {
+  _convDeleteTarget = convId;
+  confirmOverlay.classList.add('show');
+}
+
+btnConfirmCancel.addEventListener('click', () => {
+  _convDeleteTarget = null;
+  confirmOverlay.classList.remove('show');
+});
+
+confirmOverlay.addEventListener('click', (e) => {
+  if (e.target === confirmOverlay) {
+    _convDeleteTarget = null;
+    confirmOverlay.classList.remove('show');
+  }
+});
+
+btnConfirmDelete.addEventListener('click', async () => {
+  if (!_convDeleteTarget) return;
+  const convId = _convDeleteTarget;
+  btnConfirmDelete.disabled = true;
+  try {
+    const res = await fetch('/api/conversations/' + encodeURIComponent(convId), { method: 'DELETE' });
+    const data = await res.json();
+    if (data.ok) {
+      // 如果删除的是活跃对话，iframe 会被后端自动切换到新对话
+      if (convId === _convActiveId) {
+        const chatFrame = document.getElementById('chatFrame');
+        chatFrame.src = '/chat';
+      }
+      await loadConversations();
+    }
+  } catch (e) {
+    console.error('删除对话失败:', e);
+  } finally {
+    _convDeleteTarget = null;
+    confirmOverlay.classList.remove('show');
+    btnConfirmDelete.disabled = false;
+  }
+});
+
+// 工具函数
+function formatConvTime(ts) {
+  if (!ts) return '';
+  try {
+    const d = new Date(ts.replace(' ', 'T'));
+    const now = new Date();
+    const diff = now - d;
+    const days = Math.floor(diff / 86400000);
+    if (days === 0) {
+      return '今天 ' + d.toTimeString().slice(0, 5);
+    }
+    if (days === 1) return '昨天';
+    if (days < 7) return days + '天前';
+    return (d.getMonth() + 1) + '/' + d.getDate();
+  } catch (e) {
+    return ts;
+  }
+}
+
+function escapeHtml(str) {
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+// 初始加载
+loadConversations();
 </script>
 </body>
 </html>

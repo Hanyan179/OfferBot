@@ -35,6 +35,10 @@ class PlatformGetConfigTool(Tool):
         return "platform_get_config"
 
     @property
+    def display_name(self) -> str:
+        return "读取平台配置"
+
+    @property
     def description(self) -> str:
         return "读取 getjob 平台当前配置（关键词、城市、薪资、scrapeOnly 等）。支持 liepin / zhilian。"
 
@@ -74,6 +78,10 @@ class PlatformUpdateConfigTool(Tool):
     @property
     def name(self) -> str:
         return "platform_update_config"
+
+    @property
+    def display_name(self) -> str:
+        return "更新平台配置"
 
     @property
     def description(self) -> str:

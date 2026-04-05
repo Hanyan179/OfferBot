@@ -35,6 +35,10 @@ class GetjobServiceManagerTool(Tool):
         return "getjob_service_manage"
 
     @property
+    def display_name(self) -> str:
+        return "管理爬虫服务"
+
+    @property
     def description(self) -> str:
         return (
             "管理 getjob 爬虫服务的启动和停止。"

@@ -184,6 +184,10 @@ class SyncJobsTool(Tool):
         return "sync_jobs"
 
     @property
+    def display_name(self) -> str:
+        return "同步岗位数据"
+
+    @property
     def description(self) -> str:
         return (
             "从 getjob 服务同步岗位数据到本地 jobs 表。"

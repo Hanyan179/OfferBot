@@ -22,6 +22,10 @@ class AddToBlacklistTool(Tool):
         return "add_to_blacklist"
 
     @property
+    def display_name(self) -> str:
+        return "加入黑名单"
+
+    @property
     def description(self) -> str:
         return "将公司加入黑名单"
 
@@ -62,6 +66,10 @@ class RemoveFromBlacklistTool(Tool):
     @property
     def name(self) -> str:
         return "remove_from_blacklist"
+
+    @property
+    def display_name(self) -> str:
+        return "移出黑名单"
 
     @property
     def description(self) -> str:

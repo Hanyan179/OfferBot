@@ -27,6 +27,10 @@ class GetSkillContentTool(Tool):
         return "get_skill_content"
 
     @property
+    def display_name(self) -> str:
+        return "加载技能内容"
+
+    @property
     def description(self) -> str:
         return (
             "按 Skill 名称加载完整的场景参考内容，"
