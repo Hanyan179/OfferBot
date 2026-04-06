@@ -27,6 +27,7 @@ from tools.data.user_profile import GetUserProfileTool, UpdateUserProfileTool
 # Query Tools
 from tools.data.query_jobs import QueryJobsTool
 from tools.data.job_manage import DeleteJobsTool, JobCountTool
+from tools.data.search_jobs import SearchJobsTool
 
 # Memory Tools
 from tools.data.memory_tools import (
@@ -51,6 +52,7 @@ from tools.getjob.platform_sync import SyncJobsTool
 from tools.getjob.platform_stats import PlatformStatsTool
 from tools.getjob.service_manager import GetjobServiceManagerTool
 from tools.getjob.fetch_detail import FetchJobDetailTool
+from tools.getjob.platform_deliver import PlatformDeliverTool
 
 # AI Tools
 from agent.skill_loader import SkillLoader
@@ -79,6 +81,7 @@ def create_tool_registry() -> tuple[ToolRegistry, SkillLoader]:
     registry.register(QueryJobsTool())
     registry.register(DeleteJobsTool())
     registry.register(JobCountTool())
+    registry.register(SearchJobsTool())
 
     # --- Memory Tools ---
     registry.register(SaveMemoryTool())
@@ -103,6 +106,7 @@ def create_tool_registry() -> tuple[ToolRegistry, SkillLoader]:
     registry.register(PlatformStatsTool())
     registry.register(GetjobServiceManagerTool())
     registry.register(FetchJobDetailTool())
+    registry.register(PlatformDeliverTool())
 
     # --- AI Tools ---
     skill_loader = SkillLoader(registry=registry)
@@ -122,10 +126,18 @@ def bootstrap(db: Database, api_key: str, model: str = "qwen-plus", base_url: st
     from agent.planner import Planner
     from agent.executor import Executor
     from services.getjob_client import GetjobClient
+    from rag.job_index import JobVectorIndex
+    from rag.embedding import get_embeddings
+    from functools import partial
 
     registry, skill_loader = create_tool_registry()
     llm_client = LLMClient(api_key=api_key, model=model, base_url=base_url)
     getjob_client = GetjobClient(base_url=getjob_base_url)
+
+    # 向量索引 + embedding 函数
+    job_index = JobVectorIndex()
+    job_index.load()  # 尝试加载已有索引
+    embed_fn = partial(get_embeddings, api_key=api_key, base_url=base_url)
 
     planner = Planner(
         tool_registry=registry,
@@ -143,4 +155,6 @@ def bootstrap(db: Database, api_key: str, model: str = "qwen-plus", base_url: st
         "executor": executor,
         "getjob_client": getjob_client,
         "skill_loader": skill_loader,
+        "job_index": job_index,
+        "embed_fn": embed_fn,
     }

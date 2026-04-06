@@ -12,10 +12,11 @@ from __future__ import annotations
 
 import re
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from chainlit.utils import mount_chainlit
 
@@ -25,7 +26,6 @@ if str(_project_root) not in sys.path:
 
 from config import load_config
 from db.database import Database
-from web.resume_service import ResumeService
 
 app = FastAPI(title="Boss Agent")
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -33,7 +33,7 @@ templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 PROVIDER_PRESETS = {
     "dashscope": {"base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "model": "qwen3.6-plus"},
     "openai": {"base_url": "https://api.openai.com/v1", "model": "gpt-4o"},
-    "gemini": {"base_url": "https://generativelanguage.googleapis.com/v1beta/openai/", "model": "gemini-2.5-flash"},
+    "gemini": {"base_url": "https://generativelanguage.googleapis.com/v1beta/openai/", "model": "gemini-3.1-flash-lite-preview"},
     "deepseek": {"base_url": "https://api.deepseek.com/v1", "model": "deepseek-chat"},
     "custom": {"base_url": "", "model": ""},
 }
@@ -246,16 +246,16 @@ def _relative_time(ts: str | None) -> str:
 async def _load_jobs(db: Database) -> list[dict]:
     """从 jobs 表加载岗位列表，格式化给模板使用。"""
     rows = await db.execute(
-        "SELECT id, url, title, company, salary_min, salary_max, city, match_score "
-        "FROM jobs ORDER BY match_score DESC NULLS LAST, id DESC"
+        "SELECT id, url, title, company, salary_min, salary_max, city "
+        "FROM jobs ORDER BY id DESC"
     )
     return [
         {
+            "id": r.get("id"),
             "title": r.get("title") or "未知岗位",
             "company": r.get("company") or "未知公司",
             "salary": _format_salary(r.get("salary_min"), r.get("salary_max")),
             "city": r.get("city") or "",
-            "score": round(r["match_score"]) if r.get("match_score") is not None else 0,
             "url": r.get("url") or "#",
         }
         for r in rows
@@ -376,7 +376,8 @@ async def _load_overview(db: Database) -> dict:
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    return templates.TemplateResponse(request, "index.html", {})
+    """主页 — 导航栏 + 标签页"""
+    return templates.TemplateResponse(request, "index.html")
 
 
 # ---- iframe 内嵌页面（/page/xxx，无导航栏） ----
@@ -575,54 +576,13 @@ async def test_connection(request: Request):
 
         from agent.llm_client import LLMClient
         client = LLMClient(api_key=api_key, model=model, base_url=base_url)
-        # 关闭思考模式加速测试（千问 Qwen3 系列默认开启 thinking）
+        # enable_thinking 等厂商参数由 LLMClient._apply_provider_defaults 自动处理
         response = await client.chat(
             [{"role": "user", "content": "你好，请用一句话回复"}],
-            extra_body={"enable_thinking": False},
         )
         return JSONResponse({"ok": True, "response": response[:200]})
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)})
-
-
-# ---- Resume API ----
-
-@app.put("/api/resume")
-async def api_update_resume(request: Request):
-    try:
-        body = await request.json()
-    except Exception:
-        return JSONResponse({"ok": False, "error": "请求格式错误"}, status_code=400)
-    try:
-        db = await _get_db()
-        svc = ResumeService(db)
-        result = await svc.update_resume(body)
-        return JSONResponse({"ok": True, "fields": result.get("fields", [])})
-    except Exception as e:
-        return JSONResponse({"ok": False, "error": f"保存失败: {e}"}, status_code=500)
-
-
-@app.get("/api/resume/export/docx")
-async def api_export_docx():
-    try:
-        db = await _get_db()
-        svc = ResumeService(db)
-        docx_bytes, filename = await svc.export_docx()
-    except ValueError as e:
-        return JSONResponse({"ok": False, "error": str(e)}, status_code=404)
-    except Exception as e:
-        return JSONResponse({"ok": False, "error": f"导出失败: {e}"}, status_code=500)
-
-    import io
-    from urllib.parse import quote
-
-    return StreamingResponse(
-        io.BytesIO(docx_bytes),
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={
-            "Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"
-        },
-    )
 
 
 # ---- 测试 API ----
@@ -733,9 +693,17 @@ async def api_test_chat(request: Request):
     start_time = time.time()
     max_turns = 10
 
+    # --- 对话日志 ---
+    from tools.data.conversation_logger import ConversationLogger
+    conv_log_id = conversation_id or f"test-{datetime.now().strftime('%Y-%m-%dT%H-%M-%S')}"
+    conv_logger = ConversationLogger(conv_log_id)
+    conv_logger.begin_turn(message)
+
     try:
         for turn in range(max_turns):
             import asyncio
+            conv_logger.log_llm_request(model=model, message_count=len(contents), has_tools=True)
+            llm_start = time.time()
             response = await asyncio.to_thread(
                 client.models.generate_content,
                 model=model,
@@ -745,6 +713,7 @@ async def api_test_chat(request: Request):
 
             candidate = response.candidates[0]
             parts = candidate.content.parts
+            llm_ms = int((time.time() - llm_start) * 1000)
 
             # 收集 function calls 和 text
             func_calls_in_turn = []
@@ -757,6 +726,12 @@ async def api_test_chat(request: Request):
 
             if text_parts:
                 reply = "\n".join(text_parts)
+
+            conv_logger.log_llm_response(
+                has_text=bool(text_parts),
+                tool_call_count=len(func_calls_in_turn),
+                duration_ms=llm_ms,
+            )
 
             # 没有 function call，结束
             if not func_calls_in_turn:
@@ -772,6 +747,7 @@ async def api_test_chat(request: Request):
                 tool_args = dict(fc.args) if fc.args else {}
                 tool_start = time.time()
 
+                conv_logger.log_tool_start(tool_name, tool_args)
                 print(f"[TEST_CHAT] Tool call: {tool_name}({_json.dumps(tool_args, ensure_ascii=False)[:100]})", flush=True)
 
                 # 执行 tool
@@ -787,7 +763,18 @@ async def api_test_chat(request: Request):
 
                 if tool:
                     try:
-                        result = await tool.execute(tool_args, context={"db": db})
+                        # 构建完整 context（包含 getjob_client 和 task_monitor）
+                        from services.getjob_client import GetjobClient
+                        from services.task_monitor import TaskMonitor
+                        _getjob_client = GetjobClient()
+                        _task_monitor = TaskMonitor()
+                        _tool_context = {
+                            "db": db,
+                            "getjob_client": _getjob_client,
+                            "task_monitor": _task_monitor,
+                            "agent_busy_check": lambda: False,
+                        }
+                        result = await tool.execute(tool_args, context=_tool_context)
                         result_str = _json.dumps(result, ensure_ascii=False, default=str)[:2000] if result else "{}"
                         tc_report["success"] = True
                         tc_report["result"] = result_str
@@ -800,6 +787,12 @@ async def api_test_chat(request: Request):
 
                 tc_report["duration_ms"] = int((time.time() - tool_start) * 1000)
                 tool_calls_report.append(tc_report)
+                conv_logger.log_tool_result(
+                    tool_name,
+                    success=tc_report["success"],
+                    duration_ms=tc_report["duration_ms"],
+                    result_preview=tc_report["result"] or "",
+                )
 
                 print(f"[TEST_CHAT]   -> {'✅' if tc_report['success'] else '❌'} {tc_report['duration_ms']}ms", flush=True)
 
@@ -821,12 +814,15 @@ async def api_test_chat(request: Request):
         import traceback
         print(f"[TEST_CHAT] EXCEPTION: {e}", flush=True)
         traceback.print_exc()
+        conv_logger.log_llm_error(str(e))
+        conv_logger.end_turn(f"ERROR: {e}")
         return JSONResponse(
             {"ok": False, "error": f"Agent 执行失败: {e}"},
             status_code=500,
         )
 
     total_duration_ms = int((time.time() - start_time) * 1000)
+    conv_logger.end_turn(reply or "(no reply)")
     print(f"[TEST_CHAT] Done. reply={reply[:80] if reply else '(empty)'}, tools={len(tool_calls_report)}, {total_duration_ms}ms", flush=True)
 
     return JSONResponse({
@@ -867,6 +863,9 @@ async def api_create_conversation():
     try:
         mgr = _get_conversation_manager()
         conversation = await mgr.create_conversation()
+        # 写一个 .pending_new 标记文件，on_chat_start 优先读取
+        pending = Path(mgr._store.base_dir) / ".pending_new"
+        pending.write_text(conversation["id"], encoding="utf-8")
         return JSONResponse(conversation)
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
@@ -878,6 +877,17 @@ async def api_get_conversation_messages(conversation_id: str):
         mgr = _get_conversation_manager()
         messages = await mgr.get_conversation_messages(conversation_id)
         return JSONResponse({"messages": messages})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@app.put("/api/conversations/{conversation_id}/active")
+async def api_set_active_conversation(conversation_id: str):
+    """将指定对话标记为活跃。前端切换/新建对话时调用。"""
+    try:
+        mgr = _get_conversation_manager()
+        mgr._store.set_active_conversation(conversation_id)
+        return JSONResponse({"ok": True})
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
@@ -899,6 +909,183 @@ async def api_delete_conversation(conversation_id: str):
         return JSONResponse({"ok": False, "error": "删除失败"}, status_code=500)
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+# ---- 任务状态 API（供前端任务面板轮询） ----
+
+@app.get("/api/tasks")
+async def api_get_tasks():
+    """返回当前活跃的任务列表（运行中 + 最近完成的）"""
+    from services.task_state import TaskStateStore
+    store = TaskStateStore.get()
+    return JSONResponse({"tasks": store.get_active()})
+
+
+@app.get("/api/jobs")
+async def api_list_jobs(
+    page: int = 1,
+    size: int = 20,
+    city: str = "",
+    keyword: str = "",
+    salary_min: int = 0,
+):
+    """岗位列表 API，支持分页和筛选"""
+    db = await _get_db()
+    conditions = []
+    params: list = []
+
+    if city:
+        conditions.append("city LIKE ?")
+        params.append(f"%{city}%")
+    if keyword:
+        conditions.append("(title LIKE ? OR company LIKE ?)")
+        params.append(f"%{keyword}%")
+        params.append(f"%{keyword}%")
+    if salary_min > 0:
+        conditions.append("(salary_max >= ? OR salary_max IS NULL)")
+        params.append(salary_min)
+
+    where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+
+    # 总数
+    count_rows = await db.execute(f"SELECT COUNT(*) as cnt FROM jobs{where}", tuple(params))
+    total = count_rows[0]["cnt"] if count_rows else 0
+
+    # 分页数据
+    offset = (page - 1) * size
+    rows = await db.execute(
+        f"SELECT id, url, title, company, salary_min, salary_max, city FROM jobs{where} ORDER BY id DESC LIMIT ? OFFSET ?",
+        tuple(params) + (size, offset),
+    )
+
+    jobs = [
+        {
+            "id": r.get("id"),
+            "title": r.get("title") or "未知岗位",
+            "company": r.get("company") or "未知公司",
+            "salary": _format_salary(r.get("salary_min"), r.get("salary_max")),
+            "city": r.get("city") or "",
+            "url": r.get("url") or "#",
+        }
+        for r in rows
+    ]
+
+    # 城市选项（用于筛选下拉）
+    city_rows = await db.execute(
+        "SELECT DISTINCT CASE WHEN city LIKE '%-%' THEN SUBSTR(city, 1, INSTR(city, '-') - 1) ELSE city END as main_city "
+        "FROM jobs WHERE city != '' ORDER BY main_city"
+    )
+    cities = [r["main_city"] for r in city_rows if r["main_city"]]
+
+    return JSONResponse({
+        "jobs": jobs,
+        "total": total,
+        "page": page,
+        "size": size,
+        "total_pages": (total + size - 1) // size if size > 0 else 0,
+        "cities": cities,
+    })
+
+
+# ---- 知识图谱 API ----
+
+@app.get("/api/graph/user")
+async def api_graph_user():
+    import sqlite3
+    from web.graph_api import build_user_graph
+    conn = sqlite3.connect(load_config().db_path)
+    return build_user_graph(conn)
+
+@app.get("/api/graph/jobs")
+async def api_graph_jobs():
+    from web.graph_api import build_jobs_graph
+    return build_jobs_graph(str(Path(__file__).parent.parent / "data" / "lightrag_jobs"))
+
+@app.get("/api/graph/match")
+async def api_graph_match():
+    """岗位匹配度排行（embedding + 门槛过滤）"""
+    import sqlite3 as _sql, json as _json, os as _os, re as _re
+    import numpy as _np
+    from google import genai as _genai
+
+    _conn = _sql.connect(load_config().db_path)
+    _conn.row_factory = lambda c,r: {col[0]:r[i] for i,col in enumerate(c.description)}
+
+    _resume = _conn.execute("SELECT * FROM resumes WHERE is_active=1").fetchone()
+    if not _resume or not _resume.get("raw_text"):
+        return {"matches": [], "error": "请先上传简历"}
+
+    _prefs = _conn.execute("SELECT * FROM job_preferences WHERE is_active=1").fetchone()
+    _user_skills = _json.loads(_resume.get("skills_flat") or "[]")
+    _salary_min = (_prefs or {}).get("salary_min") or 0
+
+    # 有 JD 的岗位
+    _jobs = _conn.execute(
+        "SELECT id, title, company, city, salary_min, salary_max, experience, education, url, raw_jd "
+        "FROM jobs WHERE raw_jd IS NOT NULL AND raw_jd != ''"
+    ).fetchall()
+    if not _jobs:
+        return {"matches": [], "user_skills": _user_skills}
+
+    # embedding 匹配
+    _api_key = _conn.execute("SELECT value FROM user_preferences WHERE key='llm_api_key'").fetchone()
+    if not _api_key:
+        return {"matches": [], "error": "未配置 API Key"}
+
+    _client = _genai.Client(api_key=_api_key["value"])
+    _user_text = f"{_resume.get('summary','')}\n技能: {', '.join(_user_skills)}\n{(_resume.get('raw_text') or '')[:2000]}"
+    _texts = [_user_text] + [f"{j['title']}\n{j['company']}\n{j['raw_jd']}" for j in _jobs]
+
+    _resp = _client.models.embed_content(model="gemini-embedding-001", contents=[t[:8000] for t in _texts])
+    _embs = _np.array([e.values for e in _resp.embeddings], dtype=_np.float32)
+    _embs /= _np.linalg.norm(_embs, axis=1, keepdims=True)
+    _scores = _embs[1:] @ _embs[0]
+
+    _user_skills_lower = set(s.lower() for s in _user_skills)
+    _matches = []
+    for i, job in enumerate(_jobs):
+        _jd = (job.get("raw_jd") or "").lower()
+        # 门槛
+        _blocked = []
+        if any(kw in _jd for kw in ["硕士", "研究生", "master"]):
+            if _resume.get("education_level") in ["本科", "大专"]:
+                _blocked.append("学历要求硕士")
+        if any(kw in _jd for kw in ["985", "211", "双一流"]):
+            _blocked.append("要求985/211")
+
+        # 薪资过滤
+        _sal_low = ""
+        _job_sal_max = job.get("salary_max") or 0
+        if _salary_min and _job_sal_max and _job_sal_max < _salary_min * 0.8:
+            _sal_low = "薪资偏低"
+
+        # 技能加分
+        _skill_bonus = sum(0.01 for s in _user_skills_lower if s in _jd)
+        _matched_skills = [s for s in _user_skills if s.lower() in _jd]
+        _final = float(_scores[i]) + _skill_bonus
+
+        _sal_text = f"{job.get('salary_min','?')}-{job.get('salary_max','?')}K"
+        _matches.append({
+            "name": job["title"],
+            "company": job.get("company", ""),
+            "salary": _sal_text,
+            "city": job.get("city", ""),
+            "url": job.get("url", ""),
+            "match_rate": round(_final, 3),
+            "base_score": round(float(_scores[i]), 3),
+            "matched_skills": _matched_skills,
+            "blocked": _blocked,
+            "salary_warning": _sal_low,
+        })
+
+    _matches.sort(key=lambda x: x["match_rate"], reverse=True)
+    return {"matches": _matches, "user_skills": _user_skills}
+
+@app.get("/graph")
+async def graph_page():
+    """知识图谱可视化页面"""
+    from fastapi.responses import FileResponse
+    return FileResponse(str(Path(__file__).parent / "static" / "graph.html"))
 
 
 # ---- 挂载 Chainlit ----

@@ -48,6 +48,7 @@ boss-agent/data/resume/*
 boss-agent/data/index/*
 boss-agent/data/browser_data/
 boss-agent/data/boss_cookies.json
+boss-agent/data/logs/
 !boss-agent/data/**/.gitkeep
 
 # === 参考代码（不开源） ===
@@ -70,5 +71,15 @@ notes/
 # 私人数据
 boss-agent/data/conversations/
 boss-agent/data/记忆画像/
+boss-agent/data/traces/
+boss-agent/data/lightrag_jobs/
+boss-agent/data/job_index/
 boss-agent/boss-agent/
 cli
+
+# chainlit fork（本地开发用）
+chainlit-fork/
+
+# 内部 spec 文档
+boss-agent/docs/
+boss-agent/lib/
