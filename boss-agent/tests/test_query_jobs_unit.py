@@ -26,6 +26,7 @@ from tools.data.query_jobs import QueryJobsTool
 EXPECTED_KEYS = {
     "id", "url", "title", "company", "salary_min", "salary_max",
     "salary_months", "city", "experience", "education", "match_score",
+    "has_jd",
 }
 
 
@@ -272,7 +273,9 @@ class TestEmptyResultFormat:
                 result = await QueryJobsTool().execute(
                     {"city": "不存在的城市XYZ"}, {"db": db}
                 )
-                assert result == {"success": True, "count": 0, "jobs": []}
+                assert result["success"] is True
+                assert result["count"] == 0
+                assert result["jobs"] == []
             finally:
                 await db.close()
 

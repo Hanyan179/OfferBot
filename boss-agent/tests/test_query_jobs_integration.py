@@ -21,6 +21,7 @@ from agent.system_prompt import build_full_system_prompt
 EXPECTED_KEYS = {
     "id", "url", "title", "company", "salary_min", "salary_max",
     "salary_months", "city", "experience", "education", "match_score",
+    "has_jd",
 }
 
 INSERT_SQL = """

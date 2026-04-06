@@ -31,6 +31,7 @@ from tools.data.query_jobs import QueryJobsTool
 EXPECTED_KEYS = {
     "id", "url", "title", "company", "salary_min", "salary_max",
     "salary_months", "city", "experience", "education", "match_score",
+    "has_jd",
 }
 
 
@@ -146,7 +147,7 @@ class TestReturnFieldsCount:
     """
     Property 1b: For any query call, returned job dicts SHALL only contain
     keys {id, url, title, company, salary_min, salary_max, salary_months,
-    city, experience, education, match_score} — exactly 11 fields.
+    city, experience, education, match_score, has_jd} — exactly 12 fields.
 
     **Validates: Requirements 1.2**
 
