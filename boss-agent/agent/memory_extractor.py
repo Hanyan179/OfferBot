@@ -200,6 +200,7 @@ class MemoryExtractor:
         # 初始消息
         messages: list[dict] = [
             {"role": "system", "content": prompt},
+            {"role": "user", "content": "请根据以上对话内容提取用户记忆。"},
         ]
 
         # 多轮工具调用循环
@@ -210,6 +211,11 @@ class MemoryExtractor:
                     tools=tools,
                 )
             except Exception as e:
+                # Gemini thought_signature 错误：清理 tool_calls 消息后重试
+                if "thought_signature" in str(e) and turn < _MAX_EXTRACT_TURNS - 1:
+                    logger.warning("MemoryExtractor: thought_signature 错误，清理后重试")
+                    messages = [m for m in messages if not (isinstance(m, dict) and m.get("role") in ("assistant", "tool") and (m.get("tool_calls") or m.get("tool_call_id")))]
+                    continue
                 logger.error("MemoryExtractor LLM 调用失败: %s", e, exc_info=True)
                 return
 
@@ -224,21 +230,8 @@ class MemoryExtractor:
             logger.info("MemoryExtractor 第 %d 轮: %d 个工具调用", turn + 1, len(tool_calls))
 
             # 把 assistant 消息（含 tool_calls）加入历史
-            assistant_msg: dict[str, Any] = {"role": "assistant"}
-            if response.content:
-                assistant_msg["content"] = response.content
-            assistant_msg["tool_calls"] = [
-                {
-                    "id": tc.id,
-                    "type": "function",
-                    "function": {
-                        "name": tc.function.name,
-                        "arguments": tc.function.arguments,
-                    },
-                }
-                for tc in tool_calls
-            ]
-            messages.append(assistant_msg)
+            # 使用 to_dict() 保留 Gemini 的 thought_signature
+            messages.append(response.to_dict())
 
             # 执行每个工具调用
             for tc in tool_calls:

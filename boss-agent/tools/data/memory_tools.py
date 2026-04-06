@@ -234,6 +234,14 @@ class SaveMemoryTool(Tool):
             existing = file_path.read_text(encoding="utf-8")
             sections = _parse_sections(existing)
 
+            # 精确匹配：标题完全相同 → 直接替换
+            exact = next((s for s in sections if s["title"] == title), None)
+            if exact:
+                existing = existing.replace(exact["raw"], entry_text)
+                file_path.write_text(existing, encoding="utf-8")
+                return {"saved": True, "category": category, "title": title,
+                        "action": "replaced_exact", "old_title": exact["title"]}
+
             # 模糊去重：找同分类下最相似的标题
             similar = _find_similar_section(title, sections)
             if similar is not None:
