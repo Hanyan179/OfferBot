@@ -318,9 +318,14 @@ class TestResultFormatPreservation:
                 result = await tool.execute(params, {"db": db})
 
                 # Check top-level keys
-                assert set(result.keys()) == {"success", "count", "jobs"}, (
-                    f"Expected keys {{'success', 'count', 'jobs'}}, "
+                assert {"success", "count", "jobs"} <= set(result.keys()), (
+                    f"Expected at least keys {{'success', 'count', 'jobs'}}, "
                     f"got {set(result.keys())}"
+                )
+                # 'hint' is allowed when count == 0
+                extra = set(result.keys()) - {"success", "count", "jobs", "hint"}
+                assert not extra, (
+                    f"Unexpected keys: {extra}"
                 )
                 assert isinstance(result["success"], bool), (
                     f"'success' should be bool, got {type(result['success'])}"
