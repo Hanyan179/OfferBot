@@ -954,7 +954,7 @@ async def api_list_jobs(
     # 分页数据
     offset = (page - 1) * size
     rows = await db.execute(
-        f"SELECT id, url, title, company, salary_min, salary_max, city FROM jobs{where} ORDER BY id DESC LIMIT ? OFFSET ?",
+        f"SELECT id, url, title, company, salary_min, salary_max, city, match_score FROM jobs{where} ORDER BY id DESC LIMIT ? OFFSET ?",
         tuple(params) + (size, offset),
     )
 
@@ -966,11 +966,10 @@ async def api_list_jobs(
             "salary": _format_salary(r.get("salary_min"), r.get("salary_max")),
             "city": r.get("city") or "",
             "url": r.get("url") or "#",
+            "match_score": r.get("match_score"),
         }
         for r in rows
     ]
-
-    # 城市选项（用于筛选下拉）
     city_rows = await db.execute(
         "SELECT DISTINCT CASE WHEN city LIKE '%-%' THEN SUBSTR(city, 1, INSTR(city, '-') - 1) ELSE city END as main_city "
         "FROM jobs WHERE city != '' ORDER BY main_city"
