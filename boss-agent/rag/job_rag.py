@@ -42,7 +42,7 @@ class JobRAG:
 
         配置：
         - LLM: OpenAI 兼容格式（通过 base_url + model）
-        - Embedding: google.genai SDK（gemini-embedding-001, dim=3072）
+        - Embedding: 本地 bge-small-zh-v1.5（95MB，无需 API）
         - entity_types: 中文招聘场景实体
         - language: Chinese
         """
@@ -51,7 +51,7 @@ class JobRAG:
             from lightrag import LightRAG
             from lightrag.llm.openai import openai_complete_if_cache
             from lightrag.utils import EmbeddingFunc
-            import google.genai as genai
+            from sentence_transformers import SentenceTransformer
 
             api_key = self._api_key
             base_url = self._base_url
@@ -69,25 +69,22 @@ class JobRAG:
                     **kwargs,
                 )
 
-            # Embedding：返回 np.ndarray，LightRAG 内部需要 .size 属性
-            genai_client = genai.Client(api_key=api_key)
+            # Embedding：本地模型，无需 API
+            _embed_model = SentenceTransformer("BAAI/bge-small-zh-v1.5")
 
-            async def _gemini_embed(texts: list[str]) -> np.ndarray:
-                result = await genai_client.aio.models.embed_content(
-                    model="gemini-embedding-001",
-                    contents=[t[:8000] for t in texts],
-                )
-                return np.array(
-                    [e.values for e in result.embeddings], dtype=np.float32
+            async def _local_embed(texts: list[str]) -> np.ndarray:
+                import asyncio
+                return await asyncio.to_thread(
+                    _embed_model.encode, texts, normalize_embeddings=True
                 )
 
             self._rag = LightRAG(
                 working_dir=self._working_dir,
                 llm_model_func=_llm_func,
                 embedding_func=EmbeddingFunc(
-                    embedding_dim=3072,
+                    embedding_dim=512,
                     max_token_size=8192,
-                    func=_gemini_embed,
+                    func=_local_embed,
                 ),
                 addon_params={
                     "entity_types": [

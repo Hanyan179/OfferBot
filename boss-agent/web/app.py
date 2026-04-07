@@ -1096,9 +1096,8 @@ async def api_graph_jobs():
 @app.get("/api/graph/match")
 async def api_graph_match():
     """岗位匹配度排行（embedding + 门槛过滤）"""
-    import sqlite3 as _sql, json as _json, os as _os, re as _re
+    import sqlite3 as _sql, json as _json, re as _re
     import numpy as _np
-    from google import genai as _genai
 
     _conn = _sql.connect(load_config().db_path)
     _conn.row_factory = lambda c,r: {col[0]:r[i] for i,col in enumerate(c.description)}
@@ -1119,18 +1118,14 @@ async def api_graph_match():
     if not _jobs:
         return {"matches": [], "user_skills": _user_skills}
 
-    # embedding 匹配
-    _api_key = _conn.execute("SELECT value FROM user_preferences WHERE key='llm_api_key'").fetchone()
-    if not _api_key:
-        return {"matches": [], "error": "未配置 API Key"}
+    # embedding 匹配（本地模型）
+    from sentence_transformers import SentenceTransformer as _ST
+    _embed_model = _ST("BAAI/bge-small-zh-v1.5")
 
-    _client = _genai.Client(api_key=_api_key["value"])
     _user_text = f"{_resume.get('summary','')}\n技能: {', '.join(_user_skills)}\n{(_resume.get('raw_text') or '')[:2000]}"
     _texts = [_user_text] + [f"{j['title']}\n{j['company']}\n{j['raw_jd']}" for j in _jobs]
 
-    _resp = _client.models.embed_content(model="gemini-embedding-001", contents=[t[:8000] for t in _texts])
-    _embs = _np.array([e.values for e in _resp.embeddings], dtype=_np.float32)
-    _embs /= _np.linalg.norm(_embs, axis=1, keepdims=True)
+    _embs = _embed_model.encode(_texts, normalize_embeddings=True)
     _scores = _embs[1:] @ _embs[0]
 
     _user_skills_lower = set(s.lower() for s in _user_skills)
