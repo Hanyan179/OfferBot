@@ -10,6 +10,7 @@ Boss Agent — FastAPI 主应用（单页面架构）
 
 from __future__ import annotations
 
+import os
 import re
 import sys
 from datetime import datetime
@@ -640,7 +641,12 @@ async def api_test_chat(request: Request):
     # 初始化
     db = await _get_db()
     llm_settings = await _load_llm_settings(db)
-    api_key = llm_settings.get("llm_api_key", "")
+    # 优先级: 请求体 > 环境变量 > 数据库
+    api_key = (
+        body.get("api_key")
+        or os.environ.get("GEMINI_API_KEY")
+        or llm_settings.get("llm_api_key", "")
+    )
     model = body.get("model") or "gemini-3-flash-preview"
 
     if not api_key:
@@ -1026,7 +1032,7 @@ async def api_save_job_analysis(job_id: int, request: Request):
 
 @app.post("/api/jobs/{job_id}/fetch-detail")
 async def api_fetch_job_detail(job_id: int):
-    """爬取单个岗位 JD + 自动图谱化"""
+    """获取单个岗位 JD + 自动图谱化"""
     from tools.getjob.fetch_detail import FetchJobDetailTool
     from services.getjob_client import GetjobClient
     db = await _get_db()

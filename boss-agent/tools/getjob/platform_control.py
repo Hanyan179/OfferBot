@@ -40,7 +40,7 @@ class PlatformStartTaskTool(Tool):
 
     @property
     def description(self) -> str:
-        return "启动 getjob 平台的自动投递/爬取任务。支持 liepin / zhilian。"
+        return "启动 getjob 平台的自动投递/获取任务。支持 liepin / zhilian。"
 
     @property
     def category(self) -> str:

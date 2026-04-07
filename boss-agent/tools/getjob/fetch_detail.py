@@ -1,8 +1,8 @@
-"""爬取岗位详情页 JD 并写回数据库。
+"""获取岗位详情页 JD 并写回数据库。
 
 支持两种调用方式：
-- 单个 job_id：从本地数据库查 URL，爬取一个
-- job_ids 数组：从本地数据库批量查 URL，逐个爬取
+- 单个 job_id：从本地数据库查 URL，获取一个
+- job_ids 数组：从本地数据库批量查 URL，逐个获取
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class FetchJobDetailTool(Tool):
-    """通过 getjob 服务爬取猎聘岗位详情页，获取完整 JD。"""
+    """通过 getjob 服务获取猎聘岗位详情页，获取完整 JD。"""
 
     @property
     def name(self) -> str:
@@ -23,14 +23,14 @@ class FetchJobDetailTool(Tool):
 
     @property
     def display_name(self) -> str:
-        return "爬取岗位详情"
+        return "获取岗位详情"
 
     @property
     def description(self) -> str:
         return (
-            "爬取指定岗位的详情页，获取完整 JD 并保存到本地数据库。"
+            "获取指定岗位的详情页，获取完整 JD 并保存到本地数据库。"
             "传入本地数据库的岗位 ID（从 query_jobs 返回的 id 字段获取）。"
-            "支持单个 job_id 或 job_ids 数组批量爬取。"
+            "支持单个 job_id 或 job_ids 数组批量获取。"
         )
 
     @property
@@ -53,7 +53,7 @@ class FetchJobDetailTool(Tool):
                 },
                 "force": {
                     "type": "boolean",
-                    "description": "强制重新爬取，忽略本地缓存",
+                    "description": "强制重新获取，忽略本地缓存",
                     "default": False,
                 },
             },
@@ -102,7 +102,7 @@ class FetchJobDetailTool(Tool):
             title = row.get("title", "")
             raw_jd = row.get("raw_jd") or ""
 
-            # 去重：raw_jd 非空且非 force 时跳过爬取
+            # 去重：raw_jd 非空且非 force 时跳过获取
             if raw_jd and not force:
                 skipped_count += 1
                 results.append({
@@ -139,29 +139,29 @@ class FetchJobDetailTool(Tool):
                         results.append({"id": local_id, "title": title, "error": "JD 为空"})
                 else:
                     fail_count += 1
-                    results.append({"id": local_id, "title": title, "error": result.get("error", "爬取失败")})
+                    results.append({"id": local_id, "title": title, "error": result.get("error", "获取失败")})
             except Exception as e:
                 fail_count += 1
                 results.append({"id": local_id, "title": title, "error": str(e)})
-                logger.warning("爬取岗位详情失败: id=%s url=%s error=%s", local_id, url, e)
+                logger.warning("获取岗位详情失败: id=%s url=%s error=%s", local_id, url, e)
 
-        # 自动向量化：有新 JD 写入时，增量更新索引
-        job_index = context.get("job_index") if isinstance(context, dict) else None
-        embed_fn = context.get("embed_fn") if isinstance(context, dict) else None
-        if job_index and embed_fn and success_count > 0:
+        # 自动图谱化：有新 JD 写入时，增量更新 LightRAG 知识图谱
+        job_rag = context.get("job_rag") if isinstance(context, dict) else None
+        if job_rag and job_rag.is_ready and success_count > 0:
             new_jobs = [r for r in results if r.get("source") == "remote"]
             if new_jobs:
                 new_ids = [j["id"] for j in new_jobs]
                 ph = ",".join("?" * len(new_ids))
                 full_rows = await db.execute(
-                    f"SELECT id, title, company, raw_jd FROM jobs WHERE id IN ({ph})",
+                    f"SELECT id, title, company, city, salary_min, salary_max, url, raw_jd "
+                    f"FROM jobs WHERE id IN ({ph})",
                     tuple(new_ids),
                 )
                 try:
-                    added = await job_index.add_jobs(full_rows, embed_fn)
-                    logger.info("向量索引增量更新: %d 条", added)
+                    added = await job_rag.insert_jobs_batch(full_rows)
+                    logger.info("知识图谱增量更新: %d 条", added)
                 except Exception as e:
-                    logger.warning("向量化失败: %s", e)
+                    logger.warning("图谱化失败: %s", e)
 
         return {
             "success": success_count > 0 or skipped_count > 0,

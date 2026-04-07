@@ -149,7 +149,7 @@ class QueryJobsTool(Tool):
                     "success": True,
                     "count": 0,
                     "jobs": [],
-                    "hint": "本地数据库暂无岗位数据。需要先通过猎聘爬取岗位：1) getjob_service_manage(action='check') 检查服务 2) platform_update_config 配置搜索条件 3) platform_start_task 启动爬取，爬取完成后系统自动同步到本地。",
+                    "hint": "本地数据库暂无岗位数据。需要先通过猎聘获取岗位：1) getjob_service_manage(action='check') 检查服务 2) platform_update_config 配置搜索条件 3) platform_start_task 启动获取，获取完成后系统自动同步到本地。",
                 }
             return {
                 "success": True,
