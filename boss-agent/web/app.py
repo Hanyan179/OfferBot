@@ -637,114 +637,59 @@ async def api_test_chat(request: Request):
     """
     通用 Agent 对话测试接口。
 
-    使用 google-genai SDK 直接调用 Gemini，独立于主体 LLMClient。
-    自行管理 function calling 循环，收集完整执行过程并返回结构化报告。
-    通过 config.enable_test_api 控制开关，生产环境可关闭。
+    使用用户配置的 LLM（OpenAI 兼容格式），自行管理 function calling 循环。
+    通过 config.enable_test_api 控制开关。
     """
     import json as _json
     import time
 
     config = load_config()
     if not config.enable_test_api:
-        return JSONResponse(
-            {"ok": False, "error": "测试 API 未启用"},
-            status_code=403,
-        )
+        return JSONResponse({"ok": False, "error": "测试 API 未启用"}, status_code=403)
 
     try:
         body = await request.json()
     except Exception:
-        return JSONResponse(
-            {"ok": False, "error": "请求格式错误"},
-            status_code=400,
-        )
+        return JSONResponse({"ok": False, "error": "请求格式错误"}, status_code=400)
 
     message = body.get("message", "").strip()
     if not message:
-        return JSONResponse(
-            {"ok": False, "error": "message 不能为空"},
-            status_code=400,
-        )
+        return JSONResponse({"ok": False, "error": "message 不能为空"}, status_code=400)
 
     conversation_id = body.get("conversation_id")
     history = body.get("history") or []
 
-    # 初始化
     db = await _get_db()
     llm_settings = await _load_llm_settings(db)
-    # 优先级: 请求体 > 环境变量 > 数据库
-    api_key = (
-        body.get("api_key")
-        or os.environ.get("GEMINI_API_KEY")
-        or llm_settings.get("llm_api_key", "")
-    )
-    model = body.get("model") or "gemini-3-flash-preview"
+    api_key = llm_settings.get("llm_api_key", "")
+    base_url = llm_settings.get("llm_base_url", "")
+    model = body.get("model") or llm_settings.get("llm_model", "")
 
-    if not api_key:
-        return JSONResponse(
-            {"ok": False, "error": "未配置 API Key，请先在设置中配置"},
-            status_code=400,
-        )
+    if not api_key or not base_url or not model:
+        return JSONResponse({"ok": False, "error": "未配置 LLM，请先在设置中配置"}, status_code=400)
 
-    # 构建 tool registry 和 tool 定义
     from agent.bootstrap import create_tool_registry
-    registry, _skill_loader = create_tool_registry()
-
-    try:
-        from google import genai
-        from google.genai import types as gtypes
-    except ImportError:
-        return JSONResponse(
-            {"ok": False, "error": "google-genai SDK 未安装"},
-            status_code=500,
-        )
-
-    import httpx as _httpx
-    _proxy_url = "http://127.0.0.1:7893"
-    _http_client = _httpx.Client(proxy=_proxy_url, timeout=60)
-    client = genai.Client(
-        api_key=api_key,
-        http_options={"httpxClient": _http_client},
-    )
-
-    # 将 ToolRegistry 的 schemas 转为 google-genai 格式
-    func_decls = []
-    for schema in registry.get_all_schemas():
-        fn = schema["function"]
-        func_decls.append({
-            "name": fn["name"],
-            "description": fn["description"],
-            "parameters": fn["parameters"],
-        })
-
-    tools = gtypes.Tool(function_declarations=func_decls)
     from agent.system_prompt import build_full_system_prompt
-    gen_config = gtypes.GenerateContentConfig(
-        tools=[tools],
-        system_instruction=build_full_system_prompt(),
-    )
+    from openai import AsyncOpenAI
 
-    # 构建对话内容
-    contents = []
+    registry, _skill_loader = create_tool_registry()
+    client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=120)
+
+    # 构建 OpenAI tools schema
+    tools_schema = registry.get_all_schemas()
+
+    # 构建消息
+    messages = [{"role": "system", "content": build_full_system_prompt()}]
     for h in history:
         if isinstance(h, dict) and "role" in h and "content" in h:
-            role = "model" if h["role"] == "assistant" else "user"
-            contents.append(gtypes.Content(
-                role=role,
-                parts=[gtypes.Part(text=h["content"])],
-            ))
-    contents.append(gtypes.Content(
-        role="user",
-        parts=[gtypes.Part(text=message)],
-    ))
+            messages.append({"role": h["role"], "content": h["content"]})
+    messages.append({"role": "user", "content": message})
 
-    # Agent loop: LLM → tool call → execute → feed back → repeat
     tool_calls_report: list[dict] = []
     reply = ""
     start_time = time.time()
     max_turns = 10
 
-    # --- 对话日志 ---
     from tools.data.conversation_logger import ConversationLogger
     conv_log_id = conversation_id or f"test-{datetime.now().strftime('%Y-%m-%dT%H-%M-%S')}"
     conv_logger = ConversationLogger(conv_log_id)
@@ -752,99 +697,79 @@ async def api_test_chat(request: Request):
 
     try:
         for turn in range(max_turns):
-            import asyncio
-            conv_logger.log_llm_request(model=model, message_count=len(contents), has_tools=True)
+            conv_logger.log_llm_request(model=model, message_count=len(messages), has_tools=True)
             llm_start = time.time()
-            response = await asyncio.to_thread(
-                client.models.generate_content,
+
+            response = await client.chat.completions.create(
                 model=model,
-                contents=contents,
-                config=gen_config,
+                messages=messages,
+                tools=tools_schema if tools_schema else None,
             )
 
-            candidate = response.candidates[0]
-            parts = candidate.content.parts
+            choice = response.choices[0]
             llm_ms = int((time.time() - llm_start) * 1000)
 
-            # 收集 function calls 和 text
-            func_calls_in_turn = []
-            text_parts = []
-            for part in parts:
-                if part.function_call:
-                    func_calls_in_turn.append(part.function_call)
-                elif part.text:
-                    text_parts.append(part.text)
+            text_content = choice.message.content or ""
+            tool_calls = choice.message.tool_calls or []
 
-            if text_parts:
-                reply = "\n".join(text_parts)
+            if text_content:
+                reply = text_content
 
             conv_logger.log_llm_response(
-                has_text=bool(text_parts),
-                tool_call_count=len(func_calls_in_turn),
+                has_text=bool(text_content),
+                tool_call_count=len(tool_calls),
                 duration_ms=llm_ms,
             )
 
-            # 没有 function call，结束
-            if not func_calls_in_turn:
+            if not tool_calls:
                 break
 
-            # 把 model 的响应加入 contents
-            contents.append(candidate.content)
+            # 把 assistant 消息加入历史
+            assistant_msg = {"role": "assistant"}
+            if text_content:
+                assistant_msg["content"] = text_content
+            assistant_msg["tool_calls"] = [
+                {"id": tc.id, "type": "function", "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
+                for tc in tool_calls
+            ]
+            messages.append(assistant_msg)
 
-            # 执行每个 function call
-            func_response_parts = []
-            for fc in func_calls_in_turn:
-                tool_name = fc.name
-                tool_args = dict(fc.args) if fc.args else {}
+            # 执行每个 tool call
+            for tc in tool_calls:
+                tool_name = tc.function.name
+                try:
+                    tool_args = _json.loads(tc.function.arguments)
+                except _json.JSONDecodeError:
+                    tool_args = {}
+
                 tool_start = time.time()
-
                 conv_logger.log_tool_start(tool_name, tool_args)
                 print(f"[TEST_CHAT] Tool call: {tool_name}({_json.dumps(tool_args, ensure_ascii=False)[:100]})", flush=True)
 
-                # 执行 tool
                 tool = registry.get_tool(tool_name)
-                tc_report = {
-                    "name": tool_name,
-                    "display_name": registry.get_display_name(tool_name),
-                    "params": tool_args,
-                    "result": None,
-                    "success": False,
-                    "duration_ms": 0,
-                }
+                tc_report = {"name": tool_name, "display_name": registry.get_display_name(tool_name), "params": tool_args, "result": None, "success": False, "duration_ms": 0}
 
                 if tool:
                     try:
-                        # 构建完整 context（包含 getjob_client 和 task_monitor）
                         from services.getjob_client import GetjobClient
                         from services.task_monitor import TaskMonitor
                         from rag.job_rag import JobRAG
-                        _getjob_client = GetjobClient()
-                        _task_monitor = TaskMonitor()
 
-                        # JobRAG 实例缓存在 app.state
                         if not hasattr(app.state, "job_rag") or app.state.job_rag is None:
                             _job_rag = JobRAG(
                                 working_dir=str(_project_root / "data" / "lightrag_jobs"),
-                                api_key=api_key,
-                                base_url=llm_settings.get("llm_base_url", ""),
-                                model=llm_settings.get("llm_model", ""),
-                                db=db,
+                                api_key=api_key, base_url=base_url, model=model, db=db,
                             )
                             try:
                                 await _job_rag.initialize()
                             except Exception as _e:
-                                import logging
-                                logging.getLogger(__name__).warning("测试接口 JobRAG 初始化失败: %s", _e)
+                                logger.warning("测试接口 JobRAG 初始化失败: %s", _e)
                             app.state.job_rag = _job_rag
 
-                        _tool_context = {
-                            "db": db,
-                            "getjob_client": _getjob_client,
-                            "task_monitor": _task_monitor,
-                            "agent_busy_check": lambda: False,
-                            "job_rag": app.state.job_rag,
-                        }
-                        result = await tool.execute(tool_args, context=_tool_context)
+                        result = await tool.execute(tool_args, context={
+                            "db": db, "getjob_client": GetjobClient(), "task_monitor": TaskMonitor(),
+                            "agent_busy_check": lambda: False, "job_rag": app.state.job_rag,
+                        })
                         result_str = _json.dumps(result, ensure_ascii=False, default=str)[:2000] if result else "{}"
                         tc_report["success"] = True
                         tc_report["result"] = result_str
@@ -857,28 +782,10 @@ async def api_test_chat(request: Request):
 
                 tc_report["duration_ms"] = int((time.time() - tool_start) * 1000)
                 tool_calls_report.append(tc_report)
-                conv_logger.log_tool_result(
-                    tool_name,
-                    success=tc_report["success"],
-                    duration_ms=tc_report["duration_ms"],
-                    result_preview=tc_report["result"] or "",
-                )
-
+                conv_logger.log_tool_result(tool_name, success=tc_report["success"], duration_ms=tc_report["duration_ms"], result_preview=tc_report["result"] or "")
                 print(f"[TEST_CHAT]   -> {'✅' if tc_report['success'] else '❌'} {tc_report['duration_ms']}ms", flush=True)
 
-                # 构建 function response
-                func_response_parts.append(
-                    gtypes.Part.from_function_response(
-                        name=tool_name,
-                        response={"result": result_str},
-                    )
-                )
-
-            # 把 function responses 加入 contents
-            contents.append(gtypes.Content(
-                role="user",
-                parts=func_response_parts,
-            ))
+                messages.append({"role": "tool", "tool_call_id": tc.id, "content": result_str})
 
     except Exception as e:
         import traceback
@@ -886,23 +793,16 @@ async def api_test_chat(request: Request):
         traceback.print_exc()
         conv_logger.log_llm_error(str(e))
         conv_logger.end_turn(f"ERROR: {e}")
-        return JSONResponse(
-            {"ok": False, "error": f"Agent 执行失败: {e}"},
-            status_code=500,
-        )
+        return JSONResponse({"ok": False, "error": f"Agent 执行失败: {e}"}, status_code=500)
 
     total_duration_ms = int((time.time() - start_time) * 1000)
     conv_logger.end_turn(reply or "(no reply)")
     print(f"[TEST_CHAT] Done. reply={reply[:80] if reply else '(empty)'}, tools={len(tool_calls_report)}, {total_duration_ms}ms", flush=True)
 
     return JSONResponse({
-        "ok": True,
-        "reply": reply,
-        "tool_calls": tool_calls_report,
-        "conversation_id": conversation_id or "",
-        "total_duration_ms": total_duration_ms,
-        "model": model,
-        "token_usage": {"prompt": 0, "completion": 0},
+        "ok": True, "reply": reply, "tool_calls": tool_calls_report,
+        "conversation_id": conversation_id or "", "total_duration_ms": total_duration_ms,
+        "model": model, "token_usage": {"prompt": 0, "completion": 0},
     })
 
 
