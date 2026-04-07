@@ -246,7 +246,7 @@ def _relative_time(ts: str | None) -> str:
 async def _load_jobs(db: Database) -> list[dict]:
     """从 jobs 表加载岗位列表，格式化给模板使用。"""
     rows = await db.execute(
-        "SELECT id, url, title, company, salary_min, salary_max, city "
+        "SELECT id, url, title, company, salary_min, salary_max, city, match_score "
         "FROM jobs ORDER BY id DESC"
     )
     return [
@@ -257,6 +257,7 @@ async def _load_jobs(db: Database) -> list[dict]:
             "salary": _format_salary(r.get("salary_min"), r.get("salary_max")),
             "city": r.get("city") or "",
             "url": r.get("url") or "#",
+            "match_score": r.get("match_score"),
         }
         for r in rows
     ]

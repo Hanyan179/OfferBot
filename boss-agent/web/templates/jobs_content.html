@@ -7,12 +7,18 @@
     <thead><tr><th>岗位</th><th>公司</th><th>薪资</th><th>城市</th><th>匹配度</th></tr></thead>
     <tbody>
     {% for job in jobs %}
-    <tr>
-      <td><a href="{{ job.url }}" target="_blank" style="color:inherit;text-decoration:underline dotted;text-underline-offset:3px;">{{ job.title }}</a></td>
+    <tr style="cursor:pointer;" onclick="window.location.href='/job/{{ job.id }}'">
+      <td style="color:#4D96FF;">{{ job.title }}</td>
       <td>{{ job.company }}</td>
       <td>{{ job.salary }}</td>
       <td>{{ job.city }}</td>
-      <td><span class="badge">{{ job.match_score or '-' }}</span></td>
+      <td>
+        {% if job.match_score %}
+          <span class="badge {% if job.match_score >= 70 %}badge-green{% elif job.match_score >= 50 %}badge-yellow{% else %}badge-red{% endif %}">{{ job.match_score|int }}%</span>
+        {% else %}
+          <span class="badge" style="opacity:0.4;">-</span>
+        {% endif %}
+      </td>
     </tr>
     {% endfor %}
     {% if not jobs %}
