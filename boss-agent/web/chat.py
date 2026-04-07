@@ -52,9 +52,7 @@ PROVIDER_PRESETS = {
 
 
 async def _ensure_agent_ready(db: Database, config) -> bool:
-    """确保 Agent 已初始化。如果已 ready 则跳过，否则读配置并初始化。"""
-    if cl.user_session.get("agent_ready"):
-        return True
+    """确保 Agent 已初始化。配置变了则重新初始化。"""
     llm_config = await _load_llm_config(db)
     if llm_config is None and config.dashscope_api_key:
         llm_config = {
@@ -62,10 +60,15 @@ async def _ensure_agent_ready(db: Database, config) -> bool:
             "base_url": config.api_base_url,
             "model": config.dashscope_llm_model,
         }
-    if llm_config:
-        return await _init_agent(db, **llm_config)
-    cl.user_session.set("agent_ready", False)
-    return False
+    if not llm_config:
+        cl.user_session.set("agent_ready", False)
+        return False
+    # 配置没变且已 ready → 跳过
+    current = cl.user_session.get("current_model")
+    if cl.user_session.get("agent_ready") and current == llm_config["model"]:
+        return True
+    # 配置变了或未初始化 → 重新初始化
+    return await _init_agent(db, **llm_config)
 
 
 async def _load_llm_config(db: Database) -> dict | None:
@@ -530,6 +533,14 @@ async def handle_user_message(content: str):
     history.append({"role": "user", "content": content})
 
     agent_ready = cl.user_session.get("agent_ready", False)
+
+    if not agent_ready:
+        # 尝试重新加载配置（用户可能刚改了设置）
+        db = cl.user_session.get("db")
+        config = cl.user_session.get("config")
+        if db and config:
+            await _ensure_agent_ready(db, config)
+            agent_ready = cl.user_session.get("agent_ready", False)
 
     if not agent_ready:
         await cl.Message(

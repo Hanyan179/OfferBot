@@ -97,6 +97,10 @@ class JobRAG:
                     "language": "Chinese",
                 },
             )
+
+            # 注入实体规范化规则到抽取 prompt
+            self._patch_extraction_prompt()
+
             await self._rag.initialize_storages()
             self._initialized = True
             logger.info("JobRAG 初始化成功: %s", self._working_dir)
@@ -105,6 +109,41 @@ class JobRAG:
             self._initialized = False
 
     @staticmethod
+    @staticmethod
+    def _patch_extraction_prompt() -> None:
+        """在 LightRAG 的实体抽取 prompt 末尾追加招聘领域的规范化规则。
+
+        解决问题：
+        - 技能近义词（React / React.js / ReactJS → React）
+        - 城市层级（上海-浦东新区 → 上海）
+        - 脱敏公司名不合并（"某知名公司"各自独立，因为是不同公司）
+        """
+        from lightrag.prompt import PROMPTS
+
+        normalization_rules = """
+
+9.  **Entity Normalization Rules (Domain: Job Recruitment):**
+    *   **技能（Skills）规范化 — 必须严格执行：**
+        -   同一技术的不同写法必须统一为最常用的简称：
+            React.js / ReactJS → React；Vue.js / VueJS → Vue；Node.js / NodeJS → Node.js；
+            TypeScript / TS → TypeScript；JavaScript / JS → JavaScript；
+            LangChain / langchain → LangChain；PyTorch / pytorch → PyTorch；
+            TensorFlow / tensorflow → TensorFlow；C++ / CPP → C++
+        -   "Python/C++" 这种组合技能必须拆分为两个独立实体：Python 和 C++
+        -   带版本号的统一去掉版本：Python3 → Python；Java8 → Java；ES6 → JavaScript
+        -   缩写和全称统一为业界常用形式：NLP / 自然语言处理 → NLP；CV / 计算机视觉 → 计算机视觉；
+            ML / 机器学习 → 机器学习；DL / 深度学习 → 深度学习；RL / 强化学习 → 强化学习
+        -   如果两个技能是包含关系（如 RAG 和 多模态RAG），保留各自独立，不合并
+    *   **城市（City）规范化：**
+        -   统一到城市级别，去掉区县：上海-浦东新区 → 上海；北京-海淀区 → 北京；深圳-南山区 → 深圳
+    *   **公司（Company）不合并规则：**
+        -   "某知名公司"、"某上海知名公司"、"某基金公司" 等脱敏名称，即使语义相似也不得合并，因为它们代表不同的实际公司
+        -   只有完全相同的公司名才视为同一实体
+"""
+        original = PROMPTS["entity_extraction_system_prompt"]
+        if "Entity Normalization Rules" not in original:
+            PROMPTS["entity_extraction_system_prompt"] = original.rstrip() + normalization_rules
+
     def _build_document(job: dict) -> str:
         """将岗位数据构建为结构化文档格式。"""
         salary_min = job.get("salary_min", "")
