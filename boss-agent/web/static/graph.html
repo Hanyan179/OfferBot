@@ -6,16 +6,20 @@
 <title>图谱</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
-body { background:#0f0f1a; color:#e0e0e0; font-family:-apple-system,BlinkMacSystemFont,sans-serif; }
+body { background:#f5f5f7; color:#1d1d1f; font-family:-apple-system,BlinkMacSystemFont,sans-serif; transition:background .2s,color .2s; }
+html.dark body { background:#0f0f1a; color:#e0e0e0; }
 
 /* Tab 切换 */
 .tabs { display:flex; gap:2px; padding:12px 20px 0; max-width:900px; margin:0 auto; }
 .tab-btn {
   padding:8px 20px; border:none; border-radius:8px 8px 0 0; cursor:pointer;
-  font-size:13px; font-weight:500; background:rgba(255,255,255,0.04); color:#888; transition:all .15s;
+  font-size:13px; font-weight:500; background:rgba(0,0,0,0.04); color:#666; transition:all .15s;
 }
-.tab-btn:hover { background:rgba(255,255,255,0.08); color:#ccc; }
-.tab-btn.active { background:rgba(0,122,255,0.15); color:#4D96FF; }
+.tab-btn:hover { background:rgba(0,0,0,0.08); color:#333; }
+.tab-btn.active { background:rgba(0,122,255,0.12); color:#007aff; }
+html.dark .tab-btn { background:rgba(255,255,255,0.04); color:#888; }
+html.dark .tab-btn:hover { background:rgba(255,255,255,0.08); color:#ccc; }
+html.dark .tab-btn.active { background:rgba(0,122,255,0.15); color:#4D96FF; }
 .tab-content { display:none; }
 .tab-content.active { display:block; }
 
@@ -23,11 +27,13 @@ body { background:#0f0f1a; color:#e0e0e0; font-family:-apple-system,BlinkMacSyst
 .main { padding:16px 20px; max-width:900px; margin:0 auto; }
 .header { font-size:14px; color:#888; margin-bottom:16px; }
 .match-card {
-  background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08);
+  background:#fff; border:1px solid rgba(0,0,0,0.08);
   border-radius:12px; margin-bottom:10px; cursor:pointer; transition:all 0.2s;
   position:relative; overflow:hidden;
 }
-.match-card:hover { border-color:rgba(255,215,0,0.3); background:rgba(255,255,255,0.05); }
+.match-card:hover { border-color:rgba(0,122,255,0.3); background:rgba(0,0,0,0.02); }
+html.dark .match-card { background:rgba(255,255,255,0.03); border-color:rgba(255,255,255,0.08); }
+html.dark .match-card:hover { border-color:rgba(255,215,0,0.3); background:rgba(255,255,255,0.05); }
 .match-bar { position:absolute; top:0; left:0; height:3px; border-radius:0 0 3px 0; }
 .card-summary { padding:16px 20px; display:flex; align-items:center; gap:16px; }
 .match-rate {
@@ -37,24 +43,31 @@ body { background:#0f0f1a; color:#e0e0e0; font-family:-apple-system,BlinkMacSyst
 .rate-high { background:rgba(107,203,119,0.15); color:#6BCB77; border:2px solid rgba(107,203,119,0.4); }
 .rate-mid { background:rgba(255,193,7,0.15); color:#FFC107; border:2px solid rgba(255,193,7,0.4); }
 .rate-low { background:rgba(255,107,107,0.15); color:#FF6B6B; border:2px solid rgba(255,107,107,0.4); }
-.rate-none { background:rgba(255,255,255,0.05); color:#555; border:2px solid rgba(255,255,255,0.1); font-size:11px; }
-.card-info h3 { font-size:14px; color:#e0e0e0; margin-bottom:3px; }
+.rate-none { background:rgba(0,0,0,0.03); color:#999; border:2px solid rgba(0,0,0,0.08); font-size:11px; }
+html.dark .rate-none { background:rgba(255,255,255,0.05); color:#555; border-color:rgba(255,255,255,0.1); }
+.card-info h3 { font-size:14px; margin-bottom:3px; }
 .card-meta { font-size:12px; color:#888; display:flex; flex-wrap:wrap; gap:10px; }
 .pagination { display:flex; justify-content:center; gap:8px; margin-top:16px; padding-bottom:20px; }
 .pagination button {
-  padding:6px 14px; border-radius:8px; border:1px solid rgba(255,255,255,0.1);
-  background:rgba(255,255,255,0.03); color:#888; cursor:pointer; font-size:12px;
+  padding:6px 14px; border-radius:8px; border:1px solid rgba(0,0,0,0.1);
+  background:rgba(0,0,0,0.02); color:#666; cursor:pointer; font-size:12px;
 }
-.pagination button:hover { background:rgba(255,255,255,0.08); color:#e0e0e0; }
+.pagination button:hover { background:rgba(0,0,0,0.06); color:#333; }
+html.dark .pagination button { border-color:rgba(255,255,255,0.1); background:rgba(255,255,255,0.03); color:#888; }
+html.dark .pagination button:hover { background:rgba(255,255,255,0.08); color:#e0e0e0; }
 .pagination button.active { background:rgba(0,122,255,0.15); color:#4D96FF; border-color:rgba(0,122,255,0.3); }
 .pagination button:disabled { opacity:0.3; cursor:default; }
 
 /* 图谱 */
-#graphCanvas { width:100%; height:calc(100vh - 60px); }
+#graphCanvas { width:100%; height:calc(100vh - 60px); background:#fafafa; }
+html.dark #graphCanvas { background:#0f0f1a; }
 .graph-toolbar { padding:8px 20px; display:flex; gap:8px; align-items:center; }
 .graph-toolbar select, .graph-toolbar button {
-  padding:6px 12px; border-radius:6px; border:1px solid rgba(255,255,255,0.1);
-  background:rgba(255,255,255,0.05); color:#ccc; font-size:12px; cursor:pointer;
+  padding:6px 12px; border-radius:6px; border:1px solid rgba(0,0,0,0.1);
+  background:rgba(0,0,0,0.03); color:#666; font-size:12px; cursor:pointer;
+}
+html.dark .graph-toolbar select, html.dark .graph-toolbar button {
+  border-color:rgba(255,255,255,0.1); background:rgba(255,255,255,0.05); color:#ccc;
 }
 .graph-legend { display:flex; gap:12px; margin-left:auto; font-size:11px; color:#888; }
 .legend-dot { width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:4px; vertical-align:middle; }
@@ -249,7 +262,7 @@ function draw() {
   edges.forEach(e => {
     if (e.si==null||e.ti==null) return;
     let a = nodes[e.si], b = nodes[e.ti];
-    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.strokeStyle = document.documentElement.classList.contains('dark') ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.1)';
     ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
   });
   // 节点
@@ -258,7 +271,7 @@ function draw() {
     ctx.globalAlpha = 0.85;
     ctx.beginPath(); ctx.arc(n.x, n.y, n.r, 0, Math.PI*2); ctx.fill();
     ctx.globalAlpha = 1;
-    ctx.fillStyle = '#e0e0e0';
+    ctx.fillStyle = document.documentElement.classList.contains('dark') ? '#e0e0e0' : '#333';
     ctx.font = '10px sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText(n.label, n.x, n.y + n.r + 12);
@@ -294,6 +307,14 @@ canvas.addEventListener('wheel', e => {
 }, { passive: false });
 
 function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+// 主题跟随
+window.addEventListener('message', (e) => {
+  if (e.data && e.data.type === 'themeChange') {
+    document.documentElement.classList.toggle('dark', e.data.dark);
+    if (graphLoaded) draw();
+  }
+});
 
 loadMatch(1);
 </script>

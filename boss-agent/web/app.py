@@ -586,6 +586,13 @@ async def test_connection(request: Request):
         return JSONResponse({"ok": False, "error": str(e)})
 
 
+# ---- 健康检查 ----
+
+@app.get("/api/health")
+async def api_health():
+    return {"status": "ok"}
+
+
 # ---- 测试 API ----
 
 @app.post("/api/test/chat")
@@ -669,9 +676,10 @@ async def api_test_chat(request: Request):
         })
 
     tools = gtypes.Tool(function_declarations=func_decls)
+    from agent.system_prompt import build_full_system_prompt
     gen_config = gtypes.GenerateContentConfig(
         tools=[tools],
-        system_instruction="你是 OfferBot，一个专业的 AI 求职顾问。根据用户请求，调用合适的工具或直接回复。",
+        system_instruction=build_full_system_prompt(),
     )
 
     # 构建对话内容
@@ -767,13 +775,32 @@ async def api_test_chat(request: Request):
                         # 构建完整 context（包含 getjob_client 和 task_monitor）
                         from services.getjob_client import GetjobClient
                         from services.task_monitor import TaskMonitor
+                        from rag.job_rag import JobRAG
                         _getjob_client = GetjobClient()
                         _task_monitor = TaskMonitor()
+
+                        # JobRAG 实例缓存在 app.state
+                        if not hasattr(app.state, "job_rag") or app.state.job_rag is None:
+                            _job_rag = JobRAG(
+                                working_dir=str(_project_root / "data" / "lightrag_jobs"),
+                                api_key=api_key,
+                                base_url=llm_settings.get("llm_base_url", ""),
+                                model=llm_settings.get("llm_model", ""),
+                                db=db,
+                            )
+                            try:
+                                await _job_rag.initialize()
+                            except Exception as _e:
+                                import logging
+                                logging.getLogger(__name__).warning("测试接口 JobRAG 初始化失败: %s", _e)
+                            app.state.job_rag = _job_rag
+
                         _tool_context = {
                             "db": db,
                             "getjob_client": _getjob_client,
                             "task_monitor": _task_monitor,
                             "agent_busy_check": lambda: False,
+                            "job_rag": app.state.job_rag,
                         }
                         result = await tool.execute(tool_args, context=_tool_context)
                         result_str = _json.dumps(result, ensure_ascii=False, default=str)[:2000] if result else "{}"
@@ -835,81 +862,6 @@ async def api_test_chat(request: Request):
         "model": model,
         "token_usage": {"prompt": 0, "completion": 0},
     })
-
-
-# ---- 对话管理 API ----
-
-def _get_conversation_manager():
-    """获取 ConversationManager 实例（懒初始化，缓存在 app.state 上）。"""
-    if not hasattr(app.state, "conversation_manager") or app.state.conversation_manager is None:
-        from agent.conversation_manager import ConversationManager
-        from tools.data.chat_history import ChatHistoryStore
-        store = ChatHistoryStore()
-        app.state.conversation_manager = ConversationManager(store)
-    return app.state.conversation_manager
-
-
-@app.get("/api/conversations")
-async def api_list_conversations():
-    try:
-        mgr = _get_conversation_manager()
-        conversations = await mgr.list_conversations()
-        return JSONResponse({"conversations": conversations})
-    except Exception as e:
-        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
-
-
-@app.post("/api/conversations")
-async def api_create_conversation():
-    try:
-        mgr = _get_conversation_manager()
-        conversation = await mgr.create_conversation()
-        # 写一个 .pending_new 标记文件，on_chat_start 优先读取
-        pending = Path(mgr._store.base_dir) / ".pending_new"
-        pending.write_text(conversation["id"], encoding="utf-8")
-        return JSONResponse(conversation)
-    except Exception as e:
-        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
-
-
-@app.get("/api/conversations/{conversation_id}/messages")
-async def api_get_conversation_messages(conversation_id: str):
-    try:
-        mgr = _get_conversation_manager()
-        messages = await mgr.get_conversation_messages(conversation_id)
-        return JSONResponse({"messages": messages})
-    except Exception as e:
-        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
-
-
-@app.put("/api/conversations/{conversation_id}/active")
-async def api_set_active_conversation(conversation_id: str):
-    """将指定对话标记为活跃。前端切换/新建对话时调用。"""
-    try:
-        mgr = _get_conversation_manager()
-        mgr._store.set_active_conversation(conversation_id)
-        return JSONResponse({"ok": True})
-    except Exception as e:
-        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
-
-
-@app.delete("/api/conversations/{conversation_id}")
-async def api_delete_conversation(conversation_id: str):
-    try:
-        mgr = _get_conversation_manager()
-        # 如果删除的是活跃对话，先创建新对话
-        active_id = await mgr._store.get_active_conversation_id()
-        if active_id == conversation_id:
-            new_conv = await mgr.create_conversation()
-            # 如果新对话 ID 与待删除 ID 相同（同一秒内），跳过删除
-            if new_conv["id"] == conversation_id:
-                return JSONResponse({"ok": True})
-        success = await mgr.delete_conversation(conversation_id)
-        if success:
-            return JSONResponse({"ok": True})
-        return JSONResponse({"ok": False, "error": "删除失败"}, status_code=500)
-    except Exception as e:
-        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 
 # ---- 任务状态 API（供前端任务面板轮询） ----
