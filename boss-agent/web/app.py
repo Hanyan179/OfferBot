@@ -578,11 +578,15 @@ async def test_connection(request: Request):
 
         from agent.llm_client import LLMClient
         client = LLMClient(api_key=api_key, model=model, base_url=base_url)
-        # enable_thinking 等厂商参数由 LLMClient._apply_provider_defaults 自动处理
-        response = await client.chat(
-            [{"role": "user", "content": "你好，请用一句话回复"}],
+        # 只验证连通性：发最短的请求，限制 max_tokens
+        from openai import AsyncOpenAI
+        test_client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=10)
+        resp = await test_client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": "hi"}],
+            max_tokens=1,
         )
-        return JSONResponse({"ok": True, "response": response[:200]})
+        return JSONResponse({"ok": True, "response": "连接成功"})
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)})
 

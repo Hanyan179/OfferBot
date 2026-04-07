@@ -61,6 +61,7 @@ async def _load_llm_config(db: Database) -> dict | None:
 
     api_key = result.get("llm_api_key", "")
     if not api_key:
+        logger.warning("LLM 配置缺失: api_key 为空")
         return None
 
     base_url = result.get("llm_base_url", "")
@@ -90,8 +91,15 @@ async def _init_agent(db: Database, api_key: str, base_url: str, model: str) -> 
         cl.user_session.set("getjob_client", components["getjob_client"])
         cl.user_session.set("skill_loader", components["skill_loader"])
         cl.user_session.set("registry", components["registry"])
-        cl.user_session.set("job_index", components["job_index"])
-        cl.user_session.set("embed_fn", components["embed_fn"])
+
+        # LightRAG 初始化（异步）
+        job_rag = components["job_rag"]
+        try:
+            await job_rag.initialize()
+        except Exception as e:
+            logger.warning("JobRAG 初始化失败: %s", e)
+        cl.user_session.set("job_rag", job_rag)
+
         cl.user_session.set("agent_ready", True)
         cl.user_session.set("current_model", model)
 
@@ -567,7 +575,7 @@ async def handle_user_message(content: str):
     # 标记 agent 正在处理中（后台任务通知会据此判断是否直接推送 UI）
     cl.user_session.set("agent_busy", True)
 
-    async for event in executor.chat(messages=history, context={"db": db, "llm_client": executor._llm, "getjob_client": cl.user_session.get("getjob_client"), "task_monitor": cl.user_session.get("task_monitor"), "agent_busy_check": lambda: cl.user_session.get("agent_busy", False), "conversation_logger": conv_logger, "job_index": cl.user_session.get("job_index"), "embed_fn": cl.user_session.get("embed_fn")}, system_prompt=system_prompt):
+    async for event in executor.chat(messages=history, context={"db": db, "llm_client": executor._llm, "getjob_client": cl.user_session.get("getjob_client"), "task_monitor": cl.user_session.get("task_monitor"), "agent_busy_check": lambda: cl.user_session.get("agent_busy", False), "conversation_logger": conv_logger, "job_rag": cl.user_session.get("job_rag")}, system_prompt=system_prompt):
         # 收集事件到 trace
         trace_events.append(event.to_dict())
 
