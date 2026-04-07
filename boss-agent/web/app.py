@@ -1118,14 +1118,21 @@ async def api_graph_match():
     if not _jobs:
         return {"matches": [], "user_skills": _user_skills}
 
-    # embedding 匹配（本地模型）
-    from sentence_transformers import SentenceTransformer as _ST
-    _embed_model = _ST("BAAI/bge-small-zh-v1.5")
+    # embedding 匹配（DashScope text-embedding-v3）
+    _api_key = _conn.execute("SELECT value FROM user_preferences WHERE key='llm_api_key'").fetchone()
+    _base_url = _conn.execute("SELECT value FROM user_preferences WHERE key='llm_base_url'").fetchone()
+    if not _api_key:
+        return {"matches": [], "error": "未配置 API Key"}
+
+    from openai import OpenAI as _OAI
+    _embed_client = _OAI(api_key=_api_key["value"], base_url=_base_url["value"] if _base_url else "https://dashscope.aliyuncs.com/compatible-mode/v1")
 
     _user_text = f"{_resume.get('summary','')}\n技能: {', '.join(_user_skills)}\n{(_resume.get('raw_text') or '')[:2000]}"
     _texts = [_user_text] + [f"{j['title']}\n{j['company']}\n{j['raw_jd']}" for j in _jobs]
 
-    _embs = _embed_model.encode(_texts, normalize_embeddings=True)
+    _resp = _embed_client.embeddings.create(model="text-embedding-v3", input=[t[:8000] for t in _texts], dimensions=1024)
+    _embs = _np.array([e.embedding for e in _resp.data], dtype=_np.float32)
+    _embs /= _np.linalg.norm(_embs, axis=1, keepdims=True)
     _scores = _embs[1:] @ _embs[0]
 
     _user_skills_lower = set(s.lower() for s in _user_skills)

@@ -42,7 +42,7 @@ class JobRAG:
 
         配置：
         - LLM: OpenAI 兼容格式（通过 base_url + model）
-        - Embedding: 本地 bge-small-zh-v1.5（95MB，无需 API）
+        - Embedding: DashScope text-embedding-v3（1024维，和 LLM 共用 API Key）
         - entity_types: 中文招聘场景实体
         - language: Chinese
         """
@@ -51,7 +51,7 @@ class JobRAG:
             from lightrag import LightRAG
             from lightrag.llm.openai import openai_complete_if_cache
             from lightrag.utils import EmbeddingFunc
-            from sentence_transformers import SentenceTransformer
+            from openai import AsyncOpenAI
 
             api_key = self._api_key
             base_url = self._base_url
@@ -69,22 +69,24 @@ class JobRAG:
                     **kwargs,
                 )
 
-            # Embedding：本地模型，无需 API
-            _embed_model = SentenceTransformer("BAAI/bge-small-zh-v1.5")
+            # Embedding：用 DashScope text-embedding-v3，走 OpenAI 兼容接口
+            _embed_client = AsyncOpenAI(api_key=api_key, base_url=base_url)
 
-            async def _local_embed(texts: list[str]) -> np.ndarray:
-                import asyncio
-                return await asyncio.to_thread(
-                    _embed_model.encode, texts, normalize_embeddings=True
+            async def _dashscope_embed(texts: list[str]) -> np.ndarray:
+                resp = await _embed_client.embeddings.create(
+                    model="text-embedding-v3",
+                    input=[t[:8000] for t in texts],
+                    dimensions=1024,
                 )
+                return np.array([e.embedding for e in resp.data], dtype=np.float32)
 
             self._rag = LightRAG(
                 working_dir=self._working_dir,
                 llm_model_func=_llm_func,
                 embedding_func=EmbeddingFunc(
-                    embedding_dim=512,
+                    embedding_dim=1024,
                     max_token_size=8192,
-                    func=_local_embed,
+                    func=_dashscope_embed,
                 ),
                 addon_params={
                     "entity_types": [
