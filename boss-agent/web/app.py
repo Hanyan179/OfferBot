@@ -943,6 +943,34 @@ async def api_list_jobs(
 
 
 
+
+# ---- 简历 API ----
+
+@app.get("/api/resume")
+async def api_resume():
+    """获取当前活跃简历 + 求职意向"""
+    db = await _get_db()
+    rows = await db.execute("SELECT * FROM resumes WHERE is_active = 1 LIMIT 1")
+    if not rows:
+        return JSONResponse({"resume": None})
+    import json as _json
+    r = rows[0]
+    pref_rows = await db.execute("SELECT * FROM job_preferences WHERE is_active = 1 LIMIT 1")
+    p = pref_rows[0] if pref_rows else {}
+    def _j(v): 
+        try: return _json.loads(v) if v else []
+        except: return []
+    return JSONResponse({"resume": {
+        "name": r.get("name") or "", "education_level": r.get("education_level") or "",
+        "education_major": r.get("education_major") or "", "school": r.get("school") or "",
+        "years_of_experience": r.get("years_of_experience"), "current_role": r.get("current_role") or "",
+        "current_company": r.get("current_company") or "", "summary": r.get("summary") or "",
+        "skills_flat": _j(r.get("skills_flat")), "projects": _j(r.get("projects")),
+        "highlights": _j(r.get("highlights")), "work_experience": _j(r.get("work_experience")),
+        "target_roles": _j(p.get("target_roles")), "salary_min": p.get("salary_min"),
+        "salary_max": p.get("salary_max"), "target_cities": _j(p.get("target_cities")),
+    }})
+
 # ---- 岗位详情 ----
 
 @app.get("/api/jobs/{job_id}")
