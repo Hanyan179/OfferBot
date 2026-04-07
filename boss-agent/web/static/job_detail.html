@@ -111,6 +111,7 @@ body { background:#0f0f1a; color:#e0e0e0; font-family:-apple-system,BlinkMacSyst
       <div class="job-tags" id="jTags"></div>
     </div>
     <div class="actions">
+      <button class="btn btn-ai" id="btnFetch" onclick="fetchThenAnalyze()" style="display:none;">📥 爬取详情并分析</button>
       <button class="btn btn-ai" id="btnAI" onclick="runAI()">🤖 AI 深度分析</button>
       <a class="btn btn-link" id="btnUrl" href="#" target="_blank">🔗 查看猎聘详情</a>
     </div>
@@ -157,6 +158,15 @@ function render() {
   if (d.url) document.getElementById('btnUrl').href = d.url;
   else document.getElementById('btnUrl').style.display = 'none';
 
+  // 没有 JD → 显示爬取按钮，隐藏分析按钮
+  if (!d.raw_jd) {
+    document.getElementById('btnFetch').style.display = '';
+    document.getElementById('btnAI').style.display = 'none';
+  } else {
+    document.getElementById('btnFetch').style.display = 'none';
+    document.getElementById('btnAI').style.display = '';
+  }
+
   const infos = [
     ['行业', d.company_industry], ['规模', d.company_size],
     ['招聘者', d.recruiter_name], ['职位', d.recruiter_title],
@@ -180,6 +190,44 @@ function render() {
       renderAnalysis(saved);
       document.getElementById('btnAI').textContent = '🤖 重新分析';
     } catch(e) {}
+  }
+}
+
+async function fetchThenAnalyze() {
+  const btn = document.getElementById('btnFetch');
+  const el = document.getElementById('aiResult');
+  btn.disabled = true; btn.textContent = '📥 爬取中...';
+  el.className = 'ai-result visible';
+  el.innerHTML = '<div class="ai-loading">正在爬取岗位详情...</div>';
+
+  try {
+    const resp = await fetch(`${API}/api/jobs/${jobId}/fetch-detail`, {method:'POST'});
+    const data = await resp.json();
+    if (data.success && data.fetched > 0) {
+      el.innerHTML = '<div class="ai-loading">爬取成功，正在进行 AI 分析...</div>';
+      // 重新加载岗位数据（拿到新 JD）
+      const jr = await fetch(`${API}/api/jobs/${jobId}`);
+      jobData = await jr.json();
+      // 更新 JD 显示
+      const jdEl = document.getElementById('jJD');
+      jdEl.innerHTML = `<div class="jd-content">${esc(jobData.raw_jd)}</div>`;
+      // 切换按钮
+      btn.style.display = 'none';
+      document.getElementById('btnAI').style.display = '';
+      // 自动触发 AI 分析
+      await runAI();
+    } else if (data.skipped > 0) {
+      // 已有 JD，直接分析
+      btn.style.display = 'none';
+      document.getElementById('btnAI').style.display = '';
+      await runAI();
+    } else {
+      el.innerHTML = `<div class="ai-error">爬取失败: ${data.results?.[0]?.error || '未知错误'}</div>`;
+      btn.disabled = false; btn.textContent = '📥 重试爬取';
+    }
+  } catch(e) {
+    el.innerHTML = `<div class="ai-error">爬取失败: ${e.message}</div>`;
+    btn.disabled = false; btn.textContent = '📥 重试爬取';
   }
 }
 
