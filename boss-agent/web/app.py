@@ -916,6 +916,16 @@ async def api_get_tasks():
     return JSONResponse({"tasks": store.get_active()})
 
 
+@app.post("/api/tasks/{platform}/stop")
+async def api_stop_task(platform: str):
+    """停止指定平台的爬取任务"""
+    from services.getjob_client import GetjobClient
+    client = GetjobClient(load_config().getjob_base_url)
+    result = await client.stop_task(platform)
+    await client.close()
+    return JSONResponse(result)
+
+
 @app.get("/api/jobs")
 async def api_list_jobs(
     page: int = 1,
