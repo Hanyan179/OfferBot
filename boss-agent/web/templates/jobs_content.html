@@ -12,7 +12,7 @@
       <td>{{ job.company }}</td>
       <td>{{ job.salary }}</td>
       <td>{{ job.city }}</td>
-      <td><span class="badge {% if job.score >= 80 %}badge-green{% elif job.score >= 60 %}badge-yellow{% else %}badge-red{% endif %}">{{ job.score }}%</span></td>
+      <td><span class="badge">{{ job.match_score or '-' }}</span></td>
     </tr>
     {% endfor %}
     {% if not jobs %}
