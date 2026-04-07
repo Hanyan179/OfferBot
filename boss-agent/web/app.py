@@ -374,10 +374,11 @@ async def _load_overview(db: Database) -> dict:
 
 # ---- 单页面入口 ----
 
-@app.get("/", response_class=HTMLResponse)
-async def index(request: Request):
-    """主页 — 导航栏 + 标签页"""
-    return templates.TemplateResponse(request, "index.html")
+@app.get("/")
+async def index():
+    """主页 — 直接跳转 Chainlit 对话页"""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse("/chat")
 
 
 # ---- iframe 内嵌页面（/page/xxx，无导航栏） ----
