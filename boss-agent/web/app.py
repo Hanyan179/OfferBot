@@ -987,6 +987,43 @@ async def api_list_jobs(
     })
 
 
+
+# ---- 岗位详情 ----
+
+@app.get("/api/jobs/{job_id}")
+async def api_job_detail(job_id: int):
+    db = await _get_db()
+    rows = await db.execute(
+        "SELECT id, url, platform, title, company, salary_min, salary_max, salary_months, "
+        "city, experience, education, company_size, company_industry, "
+        "recruiter_name, recruiter_title, raw_jd, match_score, match_detail, discovered_at "
+        "FROM jobs WHERE id = ?", (job_id,)
+    )
+    if not rows:
+        return JSONResponse({"error": "岗位不存在"}, status_code=404)
+    r = rows[0]
+    return JSONResponse({
+        "id": r["id"], "url": r.get("url") or "", "platform": r.get("platform") or "",
+        "title": r.get("title") or "", "company": r.get("company") or "",
+        "salary": _format_salary(r.get("salary_min"), r.get("salary_max")),
+        "salary_months": r.get("salary_months"),
+        "city": r.get("city") or "", "experience": r.get("experience") or "",
+        "education": r.get("education") or "",
+        "company_size": r.get("company_size") or "",
+        "company_industry": r.get("company_industry") or "",
+        "recruiter_name": r.get("recruiter_name") or "",
+        "recruiter_title": r.get("recruiter_title") or "",
+        "raw_jd": r.get("raw_jd") or "",
+        "match_score": r.get("match_score"),
+        "match_detail": r.get("match_detail") or "",
+        "discovered_at": r.get("discovered_at") or "",
+    })
+
+@app.get("/job/{job_id}")
+async def job_detail_page(job_id: int):
+    from fastapi.responses import FileResponse
+    return FileResponse(str(Path(__file__).parent / "static" / "job_detail.html"))
+
 # ---- 知识图谱 API ----
 
 @app.get("/api/graph/user")

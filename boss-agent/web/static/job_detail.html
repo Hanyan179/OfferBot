@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>岗位详情</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#0f0f1a; color:#e0e0e0; font-family:-apple-system,BlinkMacSystemFont,sans-serif; }
+
+.top-bar { padding:12px 20px; border-bottom:1px solid rgba(255,255,255,0.06); }
+.back-btn { color:#4D96FF; text-decoration:none; font-size:13px; cursor:pointer; }
+.back-btn:hover { text-decoration:underline; }
+
+.main { padding:20px; max-width:800px; margin:0 auto; }
+
+/* 头部信息 */
+.job-header { margin-bottom:24px; }
+.job-title { font-size:20px; font-weight:700; margin-bottom:8px; }
+.job-company { font-size:15px; color:#aaa; margin-bottom:12px; }
+.job-tags { display:flex; flex-wrap:wrap; gap:8px; }
+.tag { padding:4px 12px; border-radius:16px; font-size:12px; background:rgba(255,255,255,0.06); color:#aaa; }
+.tag-salary { background:rgba(107,203,119,0.12); color:#6BCB77; }
+.tag-city { background:rgba(77,150,255,0.12); color:#4D96FF; }
+
+/* 操作按钮 */
+.actions { display:flex; gap:10px; margin-bottom:24px; }
+.btn {
+  padding:10px 24px; border-radius:10px; font-size:13px; font-weight:500;
+  border:none; cursor:pointer; transition:all 0.2s; text-decoration:none; display:inline-flex; align-items:center; gap:6px;
+}
+.btn-ai { background:rgba(255,215,0,0.12); color:#FFD700; border:1px solid rgba(255,215,0,0.2); }
+.btn-ai:hover { background:rgba(255,215,0,0.25); }
+.btn-ai:disabled { opacity:0.5; cursor:default; }
+.btn-link { background:rgba(77,150,255,0.12); color:#4D96FF; border:1px solid rgba(77,150,255,0.2); }
+.btn-link:hover { background:rgba(77,150,255,0.25); }
+
+/* 信息区块 */
+.section { margin-bottom:20px; }
+.section-title { font-size:12px; color:#666; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px; font-weight:600; }
+.info-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px 24px; }
+.info-item { font-size:13px; }
+.info-label { color:#666; }
+.info-value { color:#ccc; }
+
+/* JD */
+.jd-content { font-size:13px; line-height:1.8; color:#bbb; white-space:pre-wrap; word-break:break-word; }
+.no-jd { color:#555; font-style:italic; }
+
+/* AI 分析结果 */
+.ai-result { display:none; margin-bottom:24px; }
+.ai-result.visible { display:block; }
+.ai-loading { text-align:center; padding:20px; color:#666; }
+
+.ai-card { background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px; margin-bottom:12px; }
+.ai-card-title { font-size:13px; font-weight:600; margin-bottom:10px; display:flex; align-items:center; gap:6px; }
+
+.ai-score { display:flex; align-items:center; gap:16px; margin-bottom:12px; }
+.ai-score-circle {
+  width:64px; height:64px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+  font-size:20px; font-weight:700; flex-shrink:0;
+}
+.score-high { background:rgba(107,203,119,0.15); color:#6BCB77; border:2px solid rgba(107,203,119,0.4); }
+.score-mid { background:rgba(255,193,7,0.15); color:#FFC107; border:2px solid rgba(255,193,7,0.4); }
+.score-low { background:rgba(255,107,107,0.15); color:#FF6B6B; border:2px solid rgba(255,107,107,0.4); }
+.ai-score-text { font-size:13px; color:#aaa; line-height:1.6; }
+
+.skill-list { display:flex; flex-wrap:wrap; gap:6px; }
+.skill-tag { padding:3px 10px; border-radius:12px; font-size:12px; }
+.skill-match { background:rgba(107,203,119,0.12); color:#6BCB77; }
+.skill-miss { background:rgba(255,107,107,0.1); color:#FF6B6B; }
+
+.ai-text { font-size:13px; line-height:1.7; color:#bbb; }
+.ai-error { color:#FF6B6B; font-size:13px; padding:16px; text-align:center; }
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <a class="back-btn" onclick="history.back()">← 返回列表</a>
+</div>
+
+<div class="main">
+  <div id="loading" class="ai-loading">加载中...</div>
+  <div id="content" style="display:none;">
+
+    <!-- 头部 -->
+    <div class="job-header">
+      <div class="job-title" id="jTitle"></div>
+      <div class="job-company" id="jCompany"></div>
+      <div class="job-tags" id="jTags"></div>
+    </div>
+
+    <!-- 操作按钮 -->
+    <div class="actions">
+      <button class="btn btn-ai" id="btnAI" onclick="runAI()">🤖 AI 深度分析</button>
+      <a class="btn btn-link" id="btnUrl" href="#" target="_blank">🔗 查看猎聘详情</a>
+    </div>
+
+    <!-- AI 分析结果 -->
+    <div class="ai-result" id="aiResult"></div>
+
+    <!-- 基本信息 -->
+    <div class="section">
+      <div class="section-title">基本信息</div>
+      <div class="info-grid" id="jInfo"></div>
+    </div>
+
+    <!-- JD -->
+    <div class="section">
+      <div class="section-title">职位描述</div>
+      <div id="jJD"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = window.parent?.location?.origin || location.origin;
+const jobId = location.pathname.split('/').pop();
+let jobData = null;
+
+async function load() {
+  try {
+    const resp = await fetch(`${API}/api/jobs/${jobId}`);
+    if (!resp.ok) { document.getElementById('loading').textContent = '岗位不存在'; return; }
+    jobData = await resp.json();
+    render();
+  } catch(e) {
+    document.getElementById('loading').textContent = '加载失败: ' + e.message;
+  }
+}
+
+function render() {
+  const d = jobData;
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('content').style.display = 'block';
+
+  document.getElementById('jTitle').textContent = d.title;
+  document.getElementById('jCompany').textContent = d.company;
+
+  // tags
+  const tags = [];
+  if (d.salary) tags.push({text: '💰 ' + d.salary + (d.salary_months ? ' · ' + d.salary_months + '薪' : ''), cls: 'tag-salary'});
+  if (d.city) tags.push({text: '📍 ' + d.city, cls: 'tag-city'});
+  if (d.experience) tags.push({text: '📅 ' + d.experience, cls: ''});
+  if (d.education) tags.push({text: '🎓 ' + d.education, cls: ''});
+  document.getElementById('jTags').innerHTML = tags.map(t => `<span class="tag ${t.cls}">${esc(t.text)}</span>`).join('');
+
+  // url
+  if (d.url) { document.getElementById('btnUrl').href = d.url; }
+  else { document.getElementById('btnUrl').style.display = 'none'; }
+
+  // info grid
+  const infos = [
+    ['行业', d.company_industry], ['规模', d.company_size],
+    ['招聘者', d.recruiter_name], ['职位', d.recruiter_title],
+    ['来源', d.platform], ['发现时间', d.discovered_at?.split('T')[0] || d.discovered_at?.split(' ')[0] || ''],
+  ].filter(([,v]) => v);
+  document.getElementById('jInfo').innerHTML = infos.map(([l,v]) =>
+    `<div class="info-item"><span class="info-label">${l}：</span><span class="info-value">${esc(v)}</span></div>`
+  ).join('');
+
+  // JD
+  const jdEl = document.getElementById('jJD');
+  if (d.raw_jd) {
+    jdEl.innerHTML = `<div class="jd-content">${esc(d.raw_jd)}</div>`;
+  } else {
+    jdEl.innerHTML = `<div class="no-jd">暂无职位描述（需要先爬取 JD）</div>`;
+  }
+}
+
+async function runAI() {
+  const btn = document.getElementById('btnAI');
+  const el = document.getElementById('aiResult');
+  btn.disabled = true;
+  btn.textContent = '⏳ 分析中...';
+  el.className = 'ai-result visible';
+  el.innerHTML = '<div class="ai-loading">AI 正在分析匹配度，请稍候...</div>';
+
+  const prompt = `请对以下岗位进行匹配度分析，严格按 JSON 格式返回，不要输出其他内容：
+{"score":0-100整数,"summary":"一句话总结匹配度","strengths":["优势1","优势2"],"gaps":["差距1","差距2"],"suggestions":["建议1","建议2"],"matched_skills":["匹配的技能"],"missing_skills":["缺少的技能"]}
+
+岗位：${jobData.title}（${jobData.company}，${jobData.salary}，${jobData.city}）
+JD：${(jobData.raw_jd || '无JD').substring(0, 2000)}`;
+
+  try {
+    const resp = await fetch(`${API}/api/test/chat`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({message: prompt})
+    });
+    const data = await resp.json();
+    const reply = data.reply || '';
+
+    // 尝试解析 JSON
+    let analysis = null;
+    try {
+      const jsonMatch = reply.match(/\{[\s\S]*\}/);
+      if (jsonMatch) analysis = JSON.parse(jsonMatch[0]);
+    } catch(e) {}
+
+    if (analysis) {
+      renderAnalysis(analysis);
+    } else {
+      el.innerHTML = `<div class="ai-card"><div class="ai-text">${esc(reply)}</div></div>`;
+    }
+  } catch(e) {
+    el.innerHTML = `<div class="ai-error">分析失败: ${e.message}</div>`;
+  }
+  btn.disabled = false;
+  btn.textContent = '🤖 重新分析';
+}
+
+function renderAnalysis(a) {
+  const el = document.getElementById('aiResult');
+  const score = a.score || 0;
+  const cls = score >= 70 ? 'score-high' : score >= 50 ? 'score-mid' : 'score-low';
+
+  let html = '';
+
+  // 匹配度
+  html += `<div class="ai-card">
+    <div class="ai-score">
+      <div class="ai-score-circle ${cls}">${score}%</div>
+      <div class="ai-score-text">${esc(a.summary || '')}</div>
+    </div>
+  </div>`;
+
+  // 技能匹配
+  if ((a.matched_skills?.length) || (a.missing_skills?.length)) {
+    html += `<div class="ai-card"><div class="ai-card-title">🎯 技能匹配</div><div class="skill-list">`;
+    (a.matched_skills || []).forEach(s => { html += `<span class="skill-tag skill-match">✓ ${esc(s)}</span>`; });
+    (a.missing_skills || []).forEach(s => { html += `<span class="skill-tag skill-miss">✗ ${esc(s)}</span>`; });
+    html += `</div></div>`;
+  }
+
+  // 优势
+  if (a.strengths?.length) {
+    html += `<div class="ai-card"><div class="ai-card-title">💪 优势</div><div class="ai-text">`;
+    a.strengths.forEach(s => { html += `• ${esc(s)}<br>`; });
+    html += `</div></div>`;
+  }
+
+  // 差距
+  if (a.gaps?.length) {
+    html += `<div class="ai-card"><div class="ai-card-title">📊 差距</div><div class="ai-text">`;
+    a.gaps.forEach(s => { html += `• ${esc(s)}<br>`; });
+    html += `</div></div>`;
+  }
+
+  // 建议
+  if (a.suggestions?.length) {
+    html += `<div class="ai-card"><div class="ai-card-title">💡 建议</div><div class="ai-text">`;
+    a.suggestions.forEach(s => { html += `• ${esc(s)}<br>`; });
+    html += `</div></div>`;
+  }
+
+  el.innerHTML = html;
+}
+
+function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+load();
+</script>
+</body>
+</html>
