@@ -91,6 +91,17 @@ class FetchJobDetailTool(Tool):
         if not rows:
             return {"success": False, "error": f"未找到 ID 为 {job_ids} 的岗位"}
 
+        # 注册任务到全局状态（供前端任务面板显示）
+        from services.task_state import TaskStateStore, TaskInfo
+        import time as _time
+        task_id = f"fetch-detail-{int(_time.time())}"
+        store = TaskStateStore.get()
+        store.upsert(TaskInfo(
+            task_id=task_id, name=f"爬取岗位详情（{len(rows)}条）",
+            platform="liepin", status="running",
+            progress_text=f"0/{len(rows)}",
+        ))
+
         results = []
         success_count = 0
         fail_count = 0
@@ -144,6 +155,14 @@ class FetchJobDetailTool(Tool):
                 fail_count += 1
                 results.append({"id": local_id, "title": title, "error": str(e)})
                 logger.warning("获取岗位详情失败: id=%s url=%s error=%s", local_id, url, e)
+
+            # 更新任务进度
+            done = success_count + fail_count + skipped_count
+            store.update_progress(task_id, f"{done}/{len(rows)} 成功{success_count} 失败{fail_count}")
+
+        # 标记任务完成
+        store.update_status(task_id, "completed" if success_count > 0 or skipped_count > 0 else "failed",
+                            f"完成 成功{success_count} 跳过{skipped_count} 失败{fail_count}")
 
         # 自动图谱化：有新 JD 写入时，增量更新 LightRAG 知识图谱
         job_rag = context.get("job_rag") if isinstance(context, dict) else None
