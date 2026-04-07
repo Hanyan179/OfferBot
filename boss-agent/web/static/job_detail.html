@@ -324,7 +324,7 @@ async function runAI() {
 ${resumeInfo}`;
 
   try {
-    const resp = await fetch(`${API}/api/test/chat`, {
+    const resp = await fetch(`${API}/api/chat`, {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({message: prompt})
     });

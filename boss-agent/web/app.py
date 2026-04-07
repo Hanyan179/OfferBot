@@ -599,6 +599,37 @@ async def api_health():
     return {"status": "ok"}
 
 
+# ---- 通用 AI 调用（用用户配置的 LLM） ----
+
+@app.post("/api/chat")
+async def api_chat(request: Request):
+    """通用 LLM 调用 — 使用用户配置的 API Key / Base URL / Model。"""
+    try:
+        body = await request.json()
+        message = (body.get("message") or "").strip()
+        if not message:
+            return JSONResponse({"ok": False, "error": "message 不能为空"})
+
+        db = await _get_db()
+        settings = await _load_llm_settings(db)
+        api_key = settings.get("llm_api_key", "")
+        base_url = settings.get("llm_base_url", "")
+        model = settings.get("llm_model", "")
+        if not api_key or not base_url or not model:
+            return JSONResponse({"ok": False, "error": "请先在设置中配置 LLM"})
+
+        from openai import AsyncOpenAI
+        client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=60)
+        resp = await client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": message}],
+        )
+        reply = resp.choices[0].message.content or ""
+        return JSONResponse({"ok": True, "reply": reply})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)})
+
+
 # ---- 测试 API ----
 
 @app.post("/api/test/chat")
