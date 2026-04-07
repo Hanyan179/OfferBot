@@ -1,29 +1,63 @@
 <div class="page-header">
   <h1>📋 岗位数据</h1>
-  <p>本地缓存的岗位数据，供 AI 分析和你自己查看使用。</p>
+  <p id="jobSummary">加载中...</p>
 </div>
 <div class="card" style="padding:0;overflow:hidden;">
   <table>
     <thead><tr><th>岗位</th><th>公司</th><th>薪资</th><th>城市</th><th>匹配度</th></tr></thead>
-    <tbody>
-    {% for job in jobs %}
-    <tr style="cursor:pointer;" onclick="window.location.href='/job/{{ job.id }}'">
-      <td style="color:#4D96FF;">{{ job.title }}</td>
-      <td>{{ job.company }}</td>
-      <td>{{ job.salary }}</td>
-      <td>{{ job.city }}</td>
-      <td>
-        {% if job.match_score %}
-          <span class="badge {% if job.match_score >= 70 %}badge-green{% elif job.match_score >= 50 %}badge-yellow{% else %}badge-red{% endif %}">{{ job.match_score|int }}%</span>
-        {% else %}
-          <span class="badge" style="opacity:0.4;">-</span>
-        {% endif %}
-      </td>
-    </tr>
-    {% endfor %}
-    {% if not jobs %}
-    <tr><td colspan="5" class="empty">暂无岗位数据</td></tr>
-    {% endif %}
+    <tbody id="jobBody">
+      <tr><td colspan="5" class="empty">加载中...</td></tr>
     </tbody>
   </table>
 </div>
+<div id="jobPagination" style="display:flex;justify-content:center;gap:6px;padding:12px 0;"></div>
+
+<script>
+const PAGE_SIZE = 30;
+let currentPage = 1;
+
+async function loadJobs(page) {
+  currentPage = page;
+  const tbody = document.getElementById('jobBody');
+  tbody.innerHTML = '<tr><td colspan="5" class="empty">加载中...</td></tr>';
+  try {
+    const resp = await fetch(`/api/jobs?page=${page}&size=${PAGE_SIZE}`);
+    const data = await resp.json();
+    document.getElementById('jobSummary').textContent = `共 ${data.total} 个岗位`;
+    if (!data.jobs.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="empty">暂无岗位数据</td></tr>';
+      return;
+    }
+    tbody.innerHTML = data.jobs.map(j => {
+      const scoreHtml = j.match_score
+        ? `<span class="badge ${j.match_score >= 70 ? 'badge-green' : j.match_score >= 50 ? 'badge-yellow' : 'badge-red'}">${Math.round(j.match_score)}%</span>`
+        : '<span class="badge" style="opacity:0.4">-</span>';
+      return `<tr style="cursor:pointer" onclick="window.location.href='/job/${j.id}'">
+        <td style="color:#4D96FF">${esc(j.title)}</td>
+        <td>${esc(j.company)}</td><td>${esc(j.salary)}</td>
+        <td>${esc(j.city)}</td><td>${scoreHtml}</td></tr>`;
+    }).join('');
+    renderPagination(data.page, data.total_pages);
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="5" class="empty">加载失败</td></tr>`;
+  }
+}
+
+function renderPagination(page, totalPages) {
+  const el = document.getElementById('jobPagination');
+  if (totalPages <= 1) { el.innerHTML = ''; return; }
+  let h = `<button onclick="loadJobs(${page-1})" ${page<=1?'disabled':''} class="btn btn-secondary btn-sm">‹</button>`;
+  for (let i = 1; i <= totalPages; i++) {
+    if (i === 1 || i === totalPages || Math.abs(i - page) <= 2) {
+      h += `<button onclick="loadJobs(${i})" class="btn ${i===page?'btn-primary':'btn-secondary'} btn-sm">${i}</button>`;
+    } else if (Math.abs(i - page) === 3) {
+      h += `<button disabled class="btn btn-secondary btn-sm">…</button>`;
+    }
+  }
+  h += `<button onclick="loadJobs(${page+1})" ${page>=totalPages?'disabled':''} class="btn btn-secondary btn-sm">›</button>`;
+  el.innerHTML = h;
+}
+
+function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+loadJobs(1);
+</script>
