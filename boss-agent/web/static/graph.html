@@ -108,7 +108,7 @@ async function loadMatch(page) {
   document.getElementById('header').textContent = '加载中...';
   document.getElementById('list').innerHTML = '';
   try {
-    const resp = await fetch(`${API}/api/jobs?page=${page}&size=${pageSize}`);
+    const resp = await fetch(`${API}/api/jobs?page=${page}&size=${pageSize}&has_jd=true`);
     const data = await resp.json();
     renderMatch(data);
   } catch(e) { document.getElementById('header').textContent = '加载失败: ' + e.message; }

@@ -929,12 +929,15 @@ async def api_list_jobs(
     city: str = "",
     keyword: str = "",
     salary_min: int = 0,
+    has_jd: bool = False,
 ):
     """岗位列表 API，支持分页和筛选"""
     db = await _get_db()
     conditions = []
     params: list = []
 
+    if has_jd:
+        conditions.append("raw_jd IS NOT NULL AND raw_jd != ''")
     if city:
         conditions.append("city LIKE ?")
         params.append(f"%{city}%")
