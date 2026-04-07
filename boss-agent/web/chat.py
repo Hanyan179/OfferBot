@@ -267,7 +267,7 @@ async def on_chat_resume(thread):
                 welcome += "有什么我可以帮你的？可以继续上次的求职进展，或者告诉我新的需求。"
             else:
                 welcome = (
-                    "## 👋 你好，我是 OfferBot\n\n"
+                    "## 👋 你好，我是 MooBot\n\n"
                     "我是你的 AI 求职顾问，从认识你自己到拿到 offer，全程陪你。\n\n"
                     "我们先聊聊吧 — 你目前是在职还是离职？做什么方向的？想找什么样的工作？"
                 )
@@ -391,7 +391,7 @@ async def on_chat_start():
     if not cl.user_session.get("agent_ready"):
         # 未配置 — 固定欢迎语 + 引导配置
         await cl.Message(
-            content="## 👋 你好，我是 OfferBot\n\n"
+            content="## 👋 你好，我是 MooBot\n\n"
             "我是你的 AI 求职顾问，可以帮你认识自己、搜索岗位、分析匹配度、准备面试。\n\n"
             "⚙️ 请先点击顶部导航栏的「设置」配置 API Key，保存后会自动回到对话。"
         ).send()
@@ -450,7 +450,7 @@ async def on_chat_start():
                 cl.user_session.set("chat_history", history)
 
             welcome = (
-                "## 👋 你好，我是 OfferBot\n\n"
+                "## 👋 你好，我是 MooBot\n\n"
                 "我是你的 AI 求职顾问，从认识你自己到拿到 offer，全程陪你。\n\n"
                 "我们先聊聊吧 — 你目前是在职还是离职？做什么方向的？想找什么样的工作？"
             )
