@@ -51,6 +51,23 @@ PROVIDER_PRESETS = {
 }
 
 
+async def _ensure_agent_ready(db: Database, config) -> bool:
+    """确保 Agent 已初始化。如果已 ready 则跳过，否则读配置并初始化。"""
+    if cl.user_session.get("agent_ready"):
+        return True
+    llm_config = await _load_llm_config(db)
+    if llm_config is None and config.dashscope_api_key:
+        llm_config = {
+            "api_key": config.dashscope_api_key,
+            "base_url": config.api_base_url,
+            "model": config.dashscope_llm_model,
+        }
+    if llm_config:
+        return await _init_agent(db, **llm_config)
+    cl.user_session.set("agent_ready", False)
+    return False
+
+
 async def _load_llm_config(db: Database) -> dict | None:
     """从数据库读取 LLM 配置，返回 {api_key, base_url, model} 或 None。"""
     keys = ("llm_provider", "llm_api_key", "llm_base_url", "llm_model")
@@ -196,18 +213,7 @@ async def on_chat_resume(thread):
     cl.user_session.set("system_prompt", full_system_prompt)
 
     # LLM 配置
-    llm_config = await _load_llm_config(db)
-    if llm_config is None and config.dashscope_api_key:
-        llm_config = {
-            "api_key": config.dashscope_api_key,
-            "base_url": config.api_base_url,
-            "model": config.dashscope_llm_model,
-        }
-
-    if llm_config:
-        await _init_agent(db, **llm_config)
-    else:
-        cl.user_session.set("agent_ready", False)
+    await _ensure_agent_ready(db, config)
 
     # Skills 重新生成
     skill_loader = cl.user_session.get("skill_loader")
@@ -370,20 +376,7 @@ async def on_chat_start():
     cl.user_session.set("system_prompt", full_system_prompt)
 
     # 尝试从数据库读取 LLM 配置
-    llm_config = await _load_llm_config(db)
-
-    # 如果数据库没有，尝试环境变量
-    if llm_config is None and config.dashscope_api_key:
-        llm_config = {
-            "api_key": config.dashscope_api_key,
-            "base_url": config.api_base_url,
-            "model": config.dashscope_llm_model,
-        }
-
-    if llm_config:
-        await _init_agent(db, **llm_config)
-    else:
-        cl.user_session.set("agent_ready", False)
+    await _ensure_agent_ready(db, config)
 
     # --- Agent 初始化后，用 bootstrap 的 skill_loader 重新生成 Skills 摘要 ---
     skill_loader = cl.user_session.get("skill_loader")
