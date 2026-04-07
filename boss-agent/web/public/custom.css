@@ -1,19 +1,11 @@
 /* 隐藏 Chainlit 自带的主题切换按钮和说明按钮，由父页面导航栏统一控制 */
 
+/* Chainlit header 右侧的按钮区域中的主题切换 */
 /* "Toggle theme" 按钮的 aria-label */
 button[aria-label="Toggle theme"],
 button[aria-label="切换主题"],
+/* 通用：header 区域最右侧的图标按钮（主题+说明） */
 .MuiIconButton-root[aria-label*="theme"],
 .MuiIconButton-root[aria-label*="Theme"] {
-  display: none !important;
-}
-
-/* 隐藏 Chainlit 自带侧边栏（对话列表由外层 conv-sidebar 管理） */
-.MuiDrawer-root,
-[class*="sidebar"],
-button[aria-label="Open sidebar"],
-button[aria-label="Close sidebar"],
-button[aria-label="打开侧边栏"],
-button[aria-label="关闭侧边栏"] {
   display: none !important;
 }
