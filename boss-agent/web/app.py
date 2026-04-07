@@ -1002,6 +1002,22 @@ async def api_job_detail(job_id: int):
         "discovered_at": r.get("discovered_at") or "",
     })
 
+@app.post("/api/jobs/{job_id}/analysis")
+async def api_save_job_analysis(job_id: int, request: Request):
+    """保存 AI 分析结果到 jobs 表"""
+    import json as _json
+    body = await request.json()
+    analysis = body.get("analysis")
+    if not analysis:
+        return JSONResponse({"error": "缺少 analysis"}, status_code=400)
+    score = analysis.get("overall_score", 0)
+    db = await _get_db()
+    await db.execute_write(
+        "UPDATE jobs SET match_score = ?, match_detail = ?, parsed_at = CURRENT_TIMESTAMP WHERE id = ?",
+        (score, _json.dumps(analysis, ensure_ascii=False), job_id),
+    )
+    return JSONResponse({"ok": True})
+
 
 # ---- 知识图谱 API ----
 
