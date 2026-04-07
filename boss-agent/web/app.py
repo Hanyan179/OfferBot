@@ -1022,10 +1022,6 @@ async def api_job_detail(job_id: int):
         "discovered_at": r.get("discovered_at") or "",
     })
 
-@app.get("/job/{job_id}")
-async def job_detail_page(job_id: int):
-    from fastapi.responses import FileResponse
-    return FileResponse(str(Path(__file__).parent / "static" / "job_detail.html"))
 
 # ---- 知识图谱 API ----
 
@@ -1125,7 +1121,18 @@ async def api_graph_match():
 async def graph_page():
     """知识图谱可视化页面"""
     from fastapi.responses import FileResponse
-    return FileResponse(str(Path(__file__).parent / "static" / "graph.html"))
+    return FileResponse(
+        str(Path(__file__).parent / "static" / "graph.html"),
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+    )
+
+@app.get("/job/{job_id}")
+async def job_detail_page(job_id: int):
+    from fastapi.responses import FileResponse
+    return FileResponse(
+        str(Path(__file__).parent / "static" / "job_detail.html"),
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+    )
 
 
 # ---- 挂载 Chainlit ----
