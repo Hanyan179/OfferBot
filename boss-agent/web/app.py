@@ -1020,6 +1020,24 @@ async def api_save_job_analysis(job_id: int, request: Request):
     return JSONResponse({"ok": True})
 
 
+@app.post("/api/jobs/{job_id}/fetch-detail")
+async def api_fetch_job_detail(job_id: int):
+    """爬取单个岗位 JD + 自动图谱化"""
+    from tools.getjob.fetch_detail import FetchJobDetailTool
+    from services.getjob_client import GetjobClient
+    db = await _get_db()
+    tool = FetchJobDetailTool()
+    client = GetjobClient(load_config().getjob_base_url)
+    # 尝试获取 job_rag
+    job_rag = getattr(app.state, "job_rag", None)
+    result = await tool.execute(
+        {"job_id": job_id},
+        {"db": db, "getjob_client": client, "job_rag": job_rag},
+    )
+    await client.close()
+    return JSONResponse(result)
+
+
 # ---- 知识图谱 API ----
 
 @app.get("/api/graph/user")
