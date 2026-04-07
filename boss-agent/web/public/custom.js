@@ -50,3 +50,28 @@ window.addEventListener('storage', (e) => {
     applyTheme(saved === 'dark');
   }
 })();
+
+// 4. 拦截 Chainlit header 导航链接 → postMessage 通知父页面切标签
+// Chainlit header_links 在 iframe 内点击会导航到错误路径，需要拦截
+(function() {
+  const TAB_MAP = {
+    '/page/jobs': 'jobs',
+    '/graph': 'graph',
+    '/page/interviews': 'interviews',
+    '/page/overview': 'overview',
+    '/page/memory': 'memory',
+    '/page/settings': 'settings',
+  };
+
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest('a[href]');
+    if (!a) return;
+    const href = a.getAttribute('href');
+    const tab = TAB_MAP[href];
+    if (tab && window.parent !== window) {
+      e.preventDefault();
+      e.stopPropagation();
+      window.parent.postMessage({ type: 'switchTab', tab }, '*');
+    }
+  }, true);
+})();
