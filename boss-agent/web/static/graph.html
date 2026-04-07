@@ -3,65 +3,18 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>图谱</title>
+<title>知识图谱</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
-body { background:#f5f5f7; color:#1d1d1f; font-family:-apple-system,BlinkMacSystemFont,sans-serif; transition:background .2s,color .2s; }
+body { background:#f5f5f7; color:#1d1d1f; font-family:-apple-system,BlinkMacSystemFont,sans-serif; transition:background .2s,color .2s; overflow:hidden; }
 html.dark body { background:#0f0f1a; color:#e0e0e0; }
 
-/* Tab 切换 */
-.tabs { display:flex; gap:2px; padding:12px 20px 0; max-width:900px; margin:0 auto; }
-.tab-btn {
-  padding:8px 20px; border:none; border-radius:8px 8px 0 0; cursor:pointer;
-  font-size:13px; font-weight:500; background:rgba(0,0,0,0.04); color:#666; transition:all .15s;
+#graphCanvas { width:100%; height:calc(100vh - 44px); }
+.graph-toolbar {
+  padding:8px 20px; display:flex; gap:8px; align-items:center;
+  border-bottom:1px solid rgba(0,0,0,0.06);
 }
-.tab-btn:hover { background:rgba(0,0,0,0.08); color:#333; }
-.tab-btn.active { background:rgba(0,122,255,0.12); color:#007aff; }
-html.dark .tab-btn { background:rgba(255,255,255,0.04); color:#888; }
-html.dark .tab-btn:hover { background:rgba(255,255,255,0.08); color:#ccc; }
-html.dark .tab-btn.active { background:rgba(0,122,255,0.15); color:#4D96FF; }
-.tab-content { display:none; }
-.tab-content.active { display:block; }
-
-/* 匹配度 */
-.main { padding:16px 20px; max-width:900px; margin:0 auto; }
-.header { font-size:14px; color:#888; margin-bottom:16px; }
-.match-card {
-  background:#fff; border:1px solid rgba(0,0,0,0.08);
-  border-radius:12px; margin-bottom:10px; cursor:pointer; transition:all 0.2s;
-  position:relative; overflow:hidden;
-}
-.match-card:hover { border-color:rgba(0,122,255,0.3); background:rgba(0,0,0,0.02); }
-html.dark .match-card { background:rgba(255,255,255,0.03); border-color:rgba(255,255,255,0.08); }
-html.dark .match-card:hover { border-color:rgba(255,215,0,0.3); background:rgba(255,255,255,0.05); }
-.match-bar { position:absolute; top:0; left:0; height:3px; border-radius:0 0 3px 0; }
-.card-summary { padding:16px 20px; display:flex; align-items:center; gap:16px; }
-.match-rate {
-  width:50px; height:50px; border-radius:50%; display:flex; align-items:center; justify-content:center;
-  font-size:14px; font-weight:700; flex-shrink:0;
-}
-.rate-high { background:rgba(107,203,119,0.15); color:#6BCB77; border:2px solid rgba(107,203,119,0.4); }
-.rate-mid { background:rgba(255,193,7,0.15); color:#FFC107; border:2px solid rgba(255,193,7,0.4); }
-.rate-low { background:rgba(255,107,107,0.15); color:#FF6B6B; border:2px solid rgba(255,107,107,0.4); }
-.rate-none { background:rgba(0,0,0,0.03); color:#999; border:2px solid rgba(0,0,0,0.08); font-size:11px; }
-html.dark .rate-none { background:rgba(255,255,255,0.05); color:#555; border-color:rgba(255,255,255,0.1); }
-.card-info h3 { font-size:14px; margin-bottom:3px; }
-.card-meta { font-size:12px; color:#888; display:flex; flex-wrap:wrap; gap:10px; }
-.pagination { display:flex; justify-content:center; gap:8px; margin-top:16px; padding-bottom:20px; }
-.pagination button {
-  padding:6px 14px; border-radius:8px; border:1px solid rgba(0,0,0,0.1);
-  background:rgba(0,0,0,0.02); color:#666; cursor:pointer; font-size:12px;
-}
-.pagination button:hover { background:rgba(0,0,0,0.06); color:#333; }
-html.dark .pagination button { border-color:rgba(255,255,255,0.1); background:rgba(255,255,255,0.03); color:#888; }
-html.dark .pagination button:hover { background:rgba(255,255,255,0.08); color:#e0e0e0; }
-.pagination button.active { background:rgba(0,122,255,0.15); color:#4D96FF; border-color:rgba(0,122,255,0.3); }
-.pagination button:disabled { opacity:0.3; cursor:default; }
-
-/* 图谱 */
-#graphCanvas { width:100%; height:calc(100vh - 60px); background:#fafafa; }
-html.dark #graphCanvas { background:#0f0f1a; }
-.graph-toolbar { padding:8px 20px; display:flex; gap:8px; align-items:center; }
+html.dark .graph-toolbar { border-bottom-color:rgba(255,255,255,0.06); }
 .graph-toolbar select, .graph-toolbar button {
   padding:6px 12px; border-radius:6px; border:1px solid rgba(0,0,0,0.1);
   background:rgba(0,0,0,0.03); color:#666; font-size:12px; cursor:pointer;
@@ -69,95 +22,26 @@ html.dark #graphCanvas { background:#0f0f1a; }
 html.dark .graph-toolbar select, html.dark .graph-toolbar button {
   border-color:rgba(255,255,255,0.1); background:rgba(255,255,255,0.05); color:#ccc;
 }
-.graph-legend { display:flex; gap:12px; margin-left:auto; font-size:11px; color:#888; }
+.graph-legend { display:flex; gap:12px; margin-left:auto; font-size:11px; color:#888; flex-wrap:wrap; }
 .legend-dot { width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:4px; vertical-align:middle; }
+.graph-empty { display:flex; align-items:center; justify-content:center; height:calc(100vh - 44px); color:#888; font-size:14px; }
 </style>
 </head>
 <body>
 
-<div class="tabs">
-  <button class="tab-btn active" onclick="switchTab('match')">📊 匹配度分析</button>
-  <button class="tab-btn" onclick="switchTab('graph')">🕸️ 知识图谱</button>
+<div class="graph-toolbar">
+  <select id="graphSource">
+    <option value="user">👤 用户画像图谱</option>
+    <option value="jobs">📋 岗位知识图谱</option>
+  </select>
+  <button onclick="loadGraph()">刷新</button>
+  <div class="graph-legend" id="graphLegend"></div>
 </div>
-
-<!-- 匹配度分析 -->
-<div class="tab-content active" id="tab-match">
-  <div class="main">
-    <div class="header" id="header">加载中...</div>
-    <div id="list"></div>
-    <div class="pagination" id="pagination"></div>
-  </div>
-</div>
-
-<!-- 知识图谱 -->
-<div class="tab-content" id="tab-graph">
-  <div class="graph-toolbar">
-    <select id="graphSource">
-      <option value="user">👤 用户画像图谱</option>
-      <option value="jobs">📋 岗位知识图谱</option>
-    </select>
-    <button onclick="loadGraph()">刷新</button>
-    <div class="graph-legend" id="graphLegend"></div>
-  </div>
-  <canvas id="graphCanvas"></canvas>
-</div>
+<canvas id="graphCanvas"></canvas>
+<div class="graph-empty" id="graphEmpty" style="display:none;">暂无图谱数据</div>
 
 <script>
-/* ===== Tab 切换 ===== */
-function switchTab(name) {
-  document.querySelectorAll('.tab-btn').forEach((b,i) => b.classList.toggle('active', i === (name==='match'?0:1)));
-  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-  document.getElementById('tab-' + name).classList.add('active');
-  if (name === 'graph' && !graphLoaded) loadGraph();
-}
-
-/* ===== 匹配度分析（原有逻辑） ===== */
 const API = location.origin;
-let currentPage = 1;
-const pageSize = 20;
-
-async function loadMatch(page) {
-  currentPage = page;
-  document.getElementById('header').textContent = '加载中...';
-  document.getElementById('list').innerHTML = '';
-  try {
-    const resp = await fetch(`${API}/api/jobs?page=${page}&size=${pageSize}&has_jd=true`);
-    const data = await resp.json();
-    renderMatch(data);
-  } catch(e) { document.getElementById('header').textContent = '加载失败: ' + e.message; }
-}
-
-function renderMatch(data) {
-  const { jobs, total, page, total_pages } = data;
-  document.getElementById('header').textContent = `共 ${total} 个岗位`;
-  document.getElementById('list').innerHTML = jobs.map(m => {
-    const score = m.match_score, hasScore = score != null && score > 0;
-    const pct = hasScore ? Math.round(score) : 0;
-    const cls = !hasScore ? 'rate-none' : pct >= 70 ? 'rate-high' : pct >= 60 ? 'rate-mid' : 'rate-low';
-    const barColor = !hasScore ? 'transparent' : pct >= 70 ? '#6BCB77' : pct >= 60 ? '#FFC107' : '#FF6B6B';
-    return `<div class="match-card" onclick="location.href='/job/${m.id}'">
-      <div class="match-bar" style="width:${hasScore?pct:0}%;background:${barColor}"></div>
-      <div class="card-summary">
-        <div class="match-rate ${cls}">${hasScore?pct+'%':'待计算'}</div>
-        <div style="flex:1"><div class="card-info">
-          <h3>${esc(m.title)}</h3>
-          <div class="card-meta"><span>🏢 ${esc(m.company)}</span><span>💰 ${esc(m.salary)}</span><span>📍 ${esc(m.city)}</span></div>
-        </div></div>
-      </div></div>`;
-  }).join('');
-  const pg = document.getElementById('pagination');
-  if (total_pages <= 1) { pg.innerHTML = ''; return; }
-  let html = `<button ${page<=1?'disabled':''} onclick="loadMatch(${page-1})">‹</button>`;
-  for (let i = 1; i <= total_pages; i++) {
-    if (i===1||i===total_pages||Math.abs(i-page)<=2) html += `<button class="${i===page?'active':''}" onclick="loadMatch(${i})">${i}</button>`;
-    else if (Math.abs(i-page)===3) html += `<button disabled>…</button>`;
-  }
-  html += `<button ${page>=total_pages?'disabled':''} onclick="loadMatch(${page+1})">›</button>`;
-  pg.innerHTML = html;
-}
-
-/* ===== 知识图谱可视化 ===== */
-let graphLoaded = false;
 const TYPE_COLORS = {
   '用户':'#4D96FF','技能':'#6BCB77','目标角色':'#FFC107','城市':'#FF6B6B',
   '薪资':'#C084FC','工作经历':'#F97316','项目':'#06B6D4','求职偏好':'#EC4899',
@@ -176,23 +60,27 @@ function resizeCanvas() {
   canvas.height = canvas.clientHeight * devicePixelRatio;
   ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
 }
-window.addEventListener('resize', resizeCanvas);
+window.addEventListener('resize', () => { resizeCanvas(); if (nodes.length) draw(); });
 
 async function loadGraph() {
   const src = document.getElementById('graphSource').value;
   try {
     const resp = await fetch(`${API}/api/graph/${src}`);
     const data = await resp.json();
-    if (!data.nodes || !data.nodes.length) { graphLoaded = true; return; }
+    if (!data.nodes || !data.nodes.length) {
+      canvas.style.display = 'none';
+      document.getElementById('graphEmpty').style.display = 'flex';
+      return;
+    }
+    canvas.style.display = 'block';
+    document.getElementById('graphEmpty').style.display = 'none';
     initGraph(data);
-    graphLoaded = true;
   } catch(e) { console.error('图谱加载失败:', e); }
 }
 
 function initGraph(data) {
   resizeCanvas();
   const w = canvas.clientWidth, h = canvas.clientHeight;
-  // 去重
   const seen = new Set();
   nodes = data.nodes.filter(n => { if (seen.has(n.id)) return false; seen.add(n.id); return true; });
   edges = data.edges.filter(e => seen.has(e.source) && seen.has(e.target));
@@ -207,43 +95,34 @@ function initGraph(data) {
   });
   edges.forEach(e => { e.si = nodeMap[e.source]; e.ti = nodeMap[e.target]; });
 
-  // 图例
   const types = [...new Set(nodes.map(n => n.type))];
   document.getElementById('graphLegend').innerHTML = types.map(t =>
     `<span><span class="legend-dot" style="background:${TYPE_COLORS[t]||'#666'}"></span>${t}</span>`
   ).join('');
 
-  // 力导向模拟
   if (sim) cancelAnimationFrame(sim);
   let alpha = 1;
   function tick() {
     if (alpha < 0.005) { draw(); return; }
     alpha *= 0.995;
-    // 斥力
     for (let i = 0; i < nodes.length; i++) {
       for (let j = i+1; j < nodes.length; j++) {
-        let dx = nodes[j].x - nodes[i].x, dy = nodes[j].y - nodes[i].y;
-        let d = Math.sqrt(dx*dx+dy*dy) || 1;
-        let f = alpha * 800 / (d * d);
+        let dx = nodes[j].x-nodes[i].x, dy = nodes[j].y-nodes[i].y;
+        let d = Math.sqrt(dx*dx+dy*dy)||1, f = alpha*800/(d*d);
         nodes[i].vx -= dx/d*f; nodes[i].vy -= dy/d*f;
         nodes[j].vx += dx/d*f; nodes[j].vy += dy/d*f;
       }
     }
-    // 引力（边）
     edges.forEach(e => {
       if (e.si==null||e.ti==null) return;
-      let a = nodes[e.si], b = nodes[e.ti];
-      let dx = b.x-a.x, dy = b.y-a.y, d = Math.sqrt(dx*dx+dy*dy)||1;
-      let f = alpha * (d - 80) * 0.05;
-      a.vx += dx/d*f; a.vy += dy/d*f;
-      b.vx -= dx/d*f; b.vy -= dy/d*f;
+      let a=nodes[e.si], b=nodes[e.ti];
+      let dx=b.x-a.x, dy=b.y-a.y, d=Math.sqrt(dx*dx+dy*dy)||1, f=alpha*(d-80)*0.05;
+      a.vx+=dx/d*f; a.vy+=dy/d*f; b.vx-=dx/d*f; b.vy-=dy/d*f;
     });
-    // 中心引力
     nodes.forEach(n => {
-      n.vx += (w/2 - n.x) * alpha * 0.01;
-      n.vy += (h/2 - n.y) * alpha * 0.01;
-      n.vx *= 0.6; n.vy *= 0.6;
-      if (n !== dragNode) { n.x += n.vx; n.y += n.vy; }
+      n.vx+=(w/2-n.x)*alpha*0.01; n.vy+=(h/2-n.y)*alpha*0.01;
+      n.vx*=0.6; n.vy*=0.6;
+      if (n!==dragNode) { n.x+=n.vx; n.y+=n.vy; }
     });
     draw();
     sim = requestAnimationFrame(tick);
@@ -252,71 +131,56 @@ function initGraph(data) {
 }
 
 function draw() {
-  const w = canvas.clientWidth, h = canvas.clientHeight;
-  ctx.clearRect(0, 0, w, h);
-  ctx.save();
-  ctx.translate(camX, camY);
-  ctx.scale(camScale, camScale);
-  // 边
-  ctx.lineWidth = 0.5;
+  const w=canvas.clientWidth, h=canvas.clientHeight;
+  ctx.clearRect(0,0,w,h); ctx.save();
+  ctx.translate(camX,camY); ctx.scale(camScale,camScale);
+  const dark = document.documentElement.classList.contains('dark');
+  ctx.lineWidth=0.5;
   edges.forEach(e => {
     if (e.si==null||e.ti==null) return;
-    let a = nodes[e.si], b = nodes[e.ti];
-    ctx.strokeStyle = document.documentElement.classList.contains('dark') ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.1)';
-    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    let a=nodes[e.si], b=nodes[e.ti];
+    ctx.strokeStyle = dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.1)';
+    ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
   });
-  // 节点
   nodes.forEach(n => {
-    ctx.fillStyle = n.color;
-    ctx.globalAlpha = 0.85;
-    ctx.beginPath(); ctx.arc(n.x, n.y, n.r, 0, Math.PI*2); ctx.fill();
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = document.documentElement.classList.contains('dark') ? '#e0e0e0' : '#333';
-    ctx.font = '10px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(n.label, n.x, n.y + n.r + 12);
+    ctx.fillStyle=n.color; ctx.globalAlpha=0.85;
+    ctx.beginPath(); ctx.arc(n.x,n.y,n.r,0,Math.PI*2); ctx.fill();
+    ctx.globalAlpha=1; ctx.fillStyle=dark?'#e0e0e0':'#333';
+    ctx.font='10px sans-serif'; ctx.textAlign='center';
+    ctx.fillText(n.label, n.x, n.y+n.r+12);
   });
   ctx.restore();
 }
 
-// 拖拽
 canvas.addEventListener('mousedown', e => {
-  const rect = canvas.getBoundingClientRect();
-  const mx = (e.clientX - rect.left - camX) / camScale, my = (e.clientY - rect.top - camY) / camScale;
-  dragNode = nodes.find(n => Math.hypot(n.x-mx, n.y-my) < n.r + 5) || null;
-  if (dragNode) { offsetX = mx - dragNode.x; offsetY = my - dragNode.y; }
+  const rect=canvas.getBoundingClientRect();
+  const mx=(e.clientX-rect.left-camX)/camScale, my=(e.clientY-rect.top-camY)/camScale;
+  dragNode = nodes.find(n => Math.hypot(n.x-mx,n.y-my)<n.r+5)||null;
+  if (dragNode) { offsetX=mx-dragNode.x; offsetY=my-dragNode.y; }
 });
 canvas.addEventListener('mousemove', e => {
   if (!dragNode) return;
-  const rect = canvas.getBoundingClientRect();
-  dragNode.x = (e.clientX - rect.left - camX) / camScale - offsetX;
-  dragNode.y = (e.clientY - rect.top - camY) / camScale - offsetY;
+  const rect=canvas.getBoundingClientRect();
+  dragNode.x=(e.clientX-rect.left-camX)/camScale-offsetX;
+  dragNode.y=(e.clientY-rect.top-camY)/camScale-offsetY;
   draw();
 });
-canvas.addEventListener('mouseup', () => { dragNode = null; });
-// 缩放
+canvas.addEventListener('mouseup', () => { dragNode=null; });
 canvas.addEventListener('wheel', e => {
   e.preventDefault();
-  const d = e.deltaY > 0 ? 0.9 : 1.1;
-  const rect = canvas.getBoundingClientRect();
-  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
-  camX = mx - (mx - camX) * d;
-  camY = my - (my - camY) * d;
-  camScale *= d;
-  draw();
-}, { passive: false });
+  const d=e.deltaY>0?0.9:1.1, rect=canvas.getBoundingClientRect();
+  const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+  camX=mx-(mx-camX)*d; camY=my-(my-camY)*d; camScale*=d; draw();
+}, {passive:false});
 
-function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
-
-// 主题跟随
-window.addEventListener('message', (e) => {
-  if (e.data && e.data.type === 'themeChange') {
+window.addEventListener('message', e => {
+  if (e.data?.type==='themeChange') {
     document.documentElement.classList.toggle('dark', e.data.dark);
-    if (graphLoaded) draw();
+    if (nodes.length) draw();
   }
 });
 
-loadMatch(1);
+loadGraph();
 </script>
 </body>
 </html>
