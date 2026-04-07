@@ -25,12 +25,14 @@ class TaskInfo:
     data: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
+        elapsed = (self.finished_at or datetime.now()) - self.started_at
         return {
             "task_id": self.task_id,
             "name": self.name,
             "platform": self.platform,
             "status": self.status,
             "progress_text": self.progress_text,
+            "elapsed_s": int(elapsed.total_seconds()),
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "finished_at": self.finished_at.isoformat() if self.finished_at else None,
             "data": self.data,
