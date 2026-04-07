@@ -170,6 +170,17 @@ function render() {
   jdEl.innerHTML = d.raw_jd
     ? `<div class="jd-content">${esc(d.raw_jd)}</div>`
     : `<div class="no-jd">暂无职位描述（需要先爬取 JD）</div>`;
+
+  // 已有分析结果 → 直接渲染
+  if (d.match_detail) {
+    try {
+      const saved = JSON.parse(d.match_detail);
+      const el = document.getElementById('aiResult');
+      el.className = 'ai-result visible';
+      renderAnalysis(saved);
+      document.getElementById('btnAI').textContent = '🤖 重新分析';
+    } catch(e) {}
+  }
 }
 
 async function runAI() {
@@ -256,7 +267,14 @@ ${resumeInfo}`;
     const reply = data.reply || '';
     let analysis = null;
     try { const m = reply.match(/\{[\s\S]*\}/); if (m) analysis = JSON.parse(m[0]); } catch(e) {}
-    if (analysis) renderAnalysis(analysis);
+    if (analysis) {
+      renderAnalysis(analysis);
+      // 持久化到数据库
+      fetch(`${API}/api/jobs/${jobId}/analysis`, {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({analysis})
+      }).catch(() => {});
+    }
     else el.innerHTML = `<div class="ai-card"><div class="ai-text">${esc(reply)}</div></div>`;
   } catch(e) { el.innerHTML = `<div class="ai-error">分析失败: ${e.message}</div>`; }
   btn.disabled = false; btn.textContent = '🤖 重新分析';
