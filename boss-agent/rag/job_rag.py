@@ -108,7 +108,6 @@ class JobRAG:
             self._initialized = False
 
     @staticmethod
-    @staticmethod
     def _patch_extraction_prompt() -> None:
         """在 LightRAG 的实体抽取 prompt 末尾追加招聘领域的规范化规则。
 
@@ -143,6 +142,7 @@ class JobRAG:
         if "Entity Normalization Rules" not in original:
             PROMPTS["entity_extraction_system_prompt"] = original.rstrip() + normalization_rules
 
+    @staticmethod
     def _build_document(job: dict) -> str:
         """将岗位数据构建为结构化文档格式。"""
         salary_min = job.get("salary_min", "")
