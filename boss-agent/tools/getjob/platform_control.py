@@ -65,11 +65,33 @@ class PlatformStartTaskTool(Tool):
         result = await client.start_task(platform)
 
         if not result["success"]:
-            # 任务已在运行时，返回当前状态而非报错
             data = result.get("data") or {}
             if isinstance(data, dict) and data.get("status") == "running":
                 return {"success": True, "data": data, "message": "任务已在运行中"}
             return _handle_error(result)
+
+        # 启动后台轮询 + 完成回调（自动同步数据）
+        task_monitor = context.get("task_monitor") if isinstance(context, dict) else None
+        if task_monitor:
+            import time
+            task_id = f"{platform}-{int(time.time())}"
+
+            async def _on_complete(p: str) -> dict:
+                """任务完成后自动同步数据到本地"""
+                from tools.getjob.platform_sync import SyncJobsTool
+                db = context.get("db")
+                if not db:
+                    return {}
+                tool = SyncJobsTool()
+                return await tool.execute({"platform": p}, context)
+
+            task_monitor.start_polling(
+                task_id=task_id,
+                platform=platform,
+                client=client,
+                on_complete=_on_complete,
+                agent_busy_check=context.get("agent_busy_check"),
+            )
 
         return {"success": True, "data": result["data"]}
 
@@ -109,11 +131,15 @@ class PlatformStopTaskTool(Tool):
         client = context["getjob_client"]
         result = await client.stop_task(platform)
 
+        # 停止后台轮询
+        task_monitor = context.get("task_monitor") if isinstance(context, dict) else None
+        if task_monitor:
+            task_monitor.stop_all()
+
         if not result["success"]:
-            # 无运行中任务时返回提示
             error_text = result.get("error", "")
             if "没有正在运行" in error_text or "not running" in error_text.lower():
                 return {"success": True, "message": f"{platform} 当前没有运行中的任务"}
             return _handle_error(result)
 
-        return {"success": True, "data": result["data"]}
+        return {"success": True, "data": result["data"], "message": f"{platform} 任务已停止"}
