@@ -8,7 +8,7 @@
     <tbody>
     {% for job in jobs %}
     <tr>
-      <td>{{ job.title }}</td>
+      <td><a href="{{ job.url }}" target="_blank" style="color:inherit;text-decoration:underline dotted;text-underline-offset:3px;">{{ job.title }}</a></td>
       <td>{{ job.company }}</td>
       <td>{{ job.salary }}</td>
       <td>{{ job.city }}</td>
