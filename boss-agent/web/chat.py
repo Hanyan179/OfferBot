@@ -774,6 +774,12 @@ async def handle_user_message(content: str):
             for_ui = event.data.get("for_ui", {})
 
             if tool_name == "query_jobs" and for_ui.get("jobs"):
+                # 存 id_map 到 session（供后续 AI 定位岗位用）
+                id_map = {}
+                for j in for_ui["jobs"]:
+                    id_map[j["seq"]] = {"id": j["id"], "title": j["title"], "company": j["company"]}
+                cl.user_session.set("job_id_map", id_map)
+
                 element = cl.CustomElement(
                     name="JobList",
                     props=for_ui,

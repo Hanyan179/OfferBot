@@ -184,23 +184,17 @@ class QueryJobsTool(Tool):
                 "has_jd": bool(r.get("has_jd")),
             })
 
-        # ---- 构建 for_agent（轻量摘要）----
-        id_map = {}
-        for j in ui_jobs:
-            label = f"{j['title']}-{j['company']}"
-            if len(label) > 30:
-                label = label[:30] + "…"
-            id_map[j["seq"]] = {"id": j["id"], "label": label}
-
-        # 统计摘要
+        # ---- 构建 for_agent（极简摘要，不含具体岗位信息）----
+        # AI 不需要看岗位列表，只需要知道查到了多少、大致分布
+        # 用户提到具体岗位时，AI 通过序号从 session 中的 id_map 定位
         cities = Counter(j["city"].split("-")[0] for j in ui_jobs if j["city"])
         top_cities = ", ".join(f"{c}({n})" for c, n in cities.most_common(3))
-        salaries = [j["salary"] for j in ui_jobs if j["salary"] != "面议"]
-        salary_summary = f"薪资 {salaries[0]}~{salaries[-1]}" if salaries else "薪资未知"
-        companies = [j["company"] for j in ui_jobs[:5]]
-        company_summary = "、".join(companies[:3]) + ("等" if len(companies) > 3 else "")
-
-        summary = f"展示 {len(ui_jobs)} 条（共匹配 {total_matched} 条）。{top_cities}，{salary_summary}，{company_summary}。"
+        salaries = [j for j in ui_jobs if j["salary"] != "面议"]
+        if salaries:
+            s_vals = sorted(set(j["salary"] for j in salaries))
+            salary_summary = f"薪资范围 {s_vals[0]}~{s_vals[-1]}" if len(s_vals) > 1 else f"薪资 {s_vals[0]}"
+        else:
+            salary_summary = "薪资未知"
 
         return {
             "success": True,
@@ -210,9 +204,9 @@ class QueryJobsTool(Tool):
                 "showing": len(ui_jobs),
             },
             "for_agent": {
-                "count": len(ui_jobs),
+                "displayed": len(ui_jobs),
                 "total_matched": total_matched,
-                "summary": summary,
-                "id_map": id_map,
+                "summary": f"已在 UI 展示 {len(ui_jobs)} 条岗位（共匹配 {total_matched} 条）。{top_cities}，{salary_summary}。",
+                "note": "岗位列表已展示给用户，无需复述。用户提到具体岗位时再响应。",
             },
         }
