@@ -195,6 +195,8 @@ def _format_tool_result(data: dict) -> str:
 @cl.on_chat_resume
 async def on_chat_resume(thread):
     """Chainlit 侧边栏点击历史对话时触发 — 恢复对话上下文并继续对话。"""
+    tid = thread.get("id") if isinstance(thread, dict) else getattr(thread, "id", "?")
+    print(f">>> on_chat_resume 触发, thread_id={tid}")
     config = load_config()
     cl.user_session.set("config", config)
     cl.user_session.set("chat_history", [])
@@ -327,8 +329,10 @@ async def on_chat_resume(thread):
 async def on_chat_start():
     # 防止 WebSocket 重连导致重复执行
     if cl.user_session.get("_chat_started"):
+        print(">>> on_chat_start 跳过（已启动）")
         return
     cl.user_session.set("_chat_started", True)
+    print(">>> on_chat_start 触发")
 
     config = load_config()
     cl.user_session.set("config", config)
@@ -364,10 +368,14 @@ async def on_chat_start():
         conv_path.parent.mkdir(parents=True, exist_ok=True)
         conv_path.touch(exist_ok=True)
         chat_store.set_active_conversation(conv_id)
+        print(f">>> on_chat_start: pending_id={conv_id}")
     else:
         conv_id = await chat_store.get_active_conversation_id()
         if not conv_id:
             conv_id = await chat_store.create_conversation()
+            print(f">>> on_chat_start: 新建对话 conv_id={conv_id}")
+        else:
+            print(f">>> on_chat_start: 复用 active conv_id={conv_id}")
 
     # on_chat_start 永远不恢复旧消息到 UI。
     # 旧消息只通过 on_chat_resume（点击侧边栏历史对话）恢复。
