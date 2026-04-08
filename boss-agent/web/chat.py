@@ -215,7 +215,7 @@ async def on_chat_resume(thread):
 
     # 同步 .active 标记
     if conv_id:
-        # chat_store.set_active_conversation(conv_id)  # method does not exist
+        pass  # TODO: set_active_conversation not implemented yet
 
     # 从 JSONL 恢复对话历史到内存
     restored = []
