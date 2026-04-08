@@ -5,8 +5,9 @@ Chainlit 对话逻辑（挂载到 /chat）
 LLM 配置从 /settings 页面管理，保存在 SQLite user_preferences 表中。
 
 集成记忆系统：
-- on_chat_start: 恢复对话历史 + 加载记忆画像 + Skills 注入 system prompt
-- handle_user_message: 消息持久化到 JSONL + 异步记忆提取
+- on_chat_start: 加载记忆画像 + Skills 注入 system prompt
+- on_chat_resume: 从 DataLayer 恢复对话历史 + UI 元素
+- handle_user_message: 异步记忆提取（Chainlit DataLayer 自动持久化消息）
 """
 
 from __future__ import annotations
@@ -27,7 +28,6 @@ if str(_project_root) not in sys.path:
 from config import load_config
 from db.database import Database
 from agent.bootstrap import bootstrap
-from tools.data.chat_history import ChatHistoryStore
 from tools.data.conversation_logger import ConversationLogger
 from tools.data.execution_trace import ExecutionTraceStore
 from tools.data.memory_tools import GetUserCognitiveModelTool
@@ -49,39 +49,6 @@ PROVIDER_PRESETS = {
     "gemini": {"base_url": "https://generativelanguage.googleapis.com/v1beta/openai/", "model": "gemini-3.1-flash-lite-preview"},
     "deepseek": {"base_url": "https://api.deepseek.com/v1", "model": "deepseek-chat"},
 }
-
-
-async def _save_ui_element(db, conv_id: str | None, element_type: str, props: dict):
-    """持久化 UI 元素到数据库，供对话恢复时重建。"""
-    if not db or not conv_id:
-        return
-    try:
-        await db.execute_write(
-            "CREATE TABLE IF NOT EXISTS ui_elements ("
-            "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
-            "  conversation_id TEXT NOT NULL,"
-            "  element_type TEXT NOT NULL,"
-            "  props_json TEXT NOT NULL,"
-            "  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-            ")"
-        )
-        # 去重 key：element_type + card_type（如果有）
-        # ActionCard 按 card_type 区分，其他组件按 element_type 整体替换
-        dedup_key = element_type
-        card_type = props.get("card_type")
-        if card_type:
-            dedup_key = f"{element_type}:{card_type}"
-        await db.execute_write(
-            "DELETE FROM ui_elements WHERE conversation_id = ? AND element_type = ? "
-            "AND COALESCE(json_extract(props_json, '$.card_type'), '') = ?",
-            (conv_id, element_type, card_type or ""),
-        )
-        await db.execute_write(
-            "INSERT INTO ui_elements (conversation_id, element_type, props_json) VALUES (?, ?, ?)",
-            (conv_id, element_type, json.dumps(props, ensure_ascii=False, default=str)),
-        )
-    except Exception as e:
-        logger.warning("持久化 UI 元素失败: %s", e)
 
 
 async def _ensure_agent_ready(db: Database, config) -> bool:
@@ -202,80 +169,57 @@ def _format_tool_result(data: dict) -> str:
 
 @cl.on_chat_resume
 async def on_chat_resume(thread):
-    """Chainlit 侧边栏点击历史对话时触发 — 恢复对话上下文并继续对话。"""
+    """Chainlit 侧边栏点击历史对话时触发 — 从 DataLayer 恢复对话上下文。"""
     tid = thread.get("id") if isinstance(thread, dict) else getattr(thread, "id", "?")
     print(f">>> on_chat_resume 触发, thread_id={tid}")
     config = load_config()
     cl.user_session.set("config", config)
-    cl.user_session.set("chat_history", [])
 
-    # 连接数据库
     db = Database(config.db_path)
     await db.connect()
     await db.init_schema()
     cl.user_session.set("db", db)
+    cl.user_session.set("trace_store", ExecutionTraceStore())
 
-    chat_store = ChatHistoryStore()
-    cl.user_session.set("chat_store", chat_store)
-    trace_store = ExecutionTraceStore()
-    cl.user_session.set("trace_store", trace_store)
-
-    conv_id = thread.get("id")
-    cl.user_session.set("conversation_id", conv_id)
-
-    # 同步 .active 标记
-    if conv_id:
-        chat_store.set_active_conversation(conv_id)
-
-    # 从 JSONL 恢复对话历史到内存
-    restored = []
-    if conv_id:
-        restored = await chat_store.load_history(conv_id)
-        if restored:
-            history = [{"role": m["role"], "content": m["content"]} for m in restored if m.get("role") in ("user", "assistant", "system")]
-            cl.user_session.set("chat_history", history)
+    # 从 thread["steps"] 恢复 chat_history（给 executor 用）
+    history = []
+    for step in (thread.get("steps") or []):
+        output = step.get("output", "")
+        if not output:
+            continue
+        step_type = step.get("type", "")
+        if "user_message" in step_type:
+            history.append({"role": "user", "content": output})
+        elif "assistant_message" in step_type:
+            history.append({"role": "assistant", "content": output})
+    cl.user_session.set("chat_history", history)
 
     # 加载记忆画像
     memory_summary = ""
     try:
-        cognitive_tool = GetUserCognitiveModelTool()
-        result = await cognitive_tool.execute({}, {})
+        result = await GetUserCognitiveModelTool().execute({}, {})
         memory_summary = result.get("summary", "")
     except Exception as e:
         logger.warning("加载记忆画像失败: %s", e)
 
-    # Skills
+    # System prompt + Skills
     skills_section = ""
-
-    # System prompt
     full_system_prompt = build_full_system_prompt(skills_prompt_section=skills_section)
     cl.user_session.set("system_prompt", full_system_prompt)
 
-    # LLM 配置
     await _ensure_agent_ready(db, config)
 
-    # Skills 重新生成
     skill_loader = cl.user_session.get("skill_loader")
     if skill_loader is not None:
         skills_section = skill_loader.to_prompt_section()
         full_system_prompt = build_full_system_prompt(skills_prompt_section=skills_section)
         cl.user_session.set("system_prompt", full_system_prompt)
 
-    # 注入用户档案和记忆到对话历史
     if cl.user_session.get("agent_ready"):
-        # --- 启动上一轮对话的记忆提取（如果有待处理的） ---
-        pending_conv_id = cl.user_session.get("_pending_extract_conv_id")
-        pending_messages = cl.user_session.get("_pending_extract_messages")
-        if pending_conv_id and pending_messages:
-            _launch_memory_extraction(pending_messages, pending_conv_id)
-            cl.user_session.set("_pending_extract_conv_id", None)
-            cl.user_session.set("_pending_extract_messages", None)
-
         profile_rows = await db.execute(
             "SELECT name, city, current_role, years_of_experience FROM resumes WHERE is_active = 1 LIMIT 1"
         )
         has_profile = bool(profile_rows and profile_rows[0].get("name"))
-        history = cl.user_session.get("chat_history", [])
         if has_profile:
             profile_context = json.dumps(dict(profile_rows[0]), ensure_ascii=False, default=str)
             history.insert(0, {"role": "system", "content": f"[用户档案] {profile_context}"})
@@ -284,19 +228,12 @@ async def on_chat_resume(thread):
             history.insert(idx, {"role": "system", "content": f"[用户记忆画像]\n{memory_summary}"})
         cl.user_session.set("chat_history", history)
 
-        has_history = any(m.get("role") in ("user", "assistant") for m in (restored or []))
+        has_history = any(m.get("role") in ("user", "assistant") for m in history)
         if not has_history:
             if has_profile:
                 p = profile_rows[0]
-                name = p.get("name", "")
-                city = p.get("city", "")
-                role = p.get("current_role", "")
-                welcome = f"## 👋 欢迎回来，{name}\n\n"
-                details = []
-                if city:
-                    details.append(f"📍 {city}")
-                if role:
-                    details.append(f"💼 {role}")
+                welcome = f"## 👋 欢迎回来，{p.get('name', '')}\n\n"
+                details = [d for d in [f"📍 {p['city']}" if p.get('city') else "", f"💼 {p['current_role']}" if p.get('current_role') else ""] if d]
                 if details:
                     welcome += " · ".join(details) + "\n\n"
                 welcome += "有什么我可以帮你的？可以继续上次的求职进展，或者告诉我新的需求。"
@@ -308,38 +245,26 @@ async def on_chat_resume(thread):
                 )
             await cl.Message(content=welcome).send()
 
-    # ---- 恢复 UI 元素 ----
-    # 注意：on_chat_resume 之后 Chainlit 会发 resume_thread 事件，
-    # 前端收到后用纯文本 steps 执行 setMessages() 覆盖所有消息。
-    # 所以这里的 UI 元素必须延迟发送，等 resume_thread 处理完。
-    if conv_id and db:
-        _db_ref = db
-        _conv_id_ref = conv_id
-
+    # ---- 恢复 UI 元素（从 DataLayer elements 表） ----
+    elements = thread.get("elements") or []
+    custom_elements = [e for e in elements if e.get("type") == "custom"]
+    if custom_elements:
         async def _restore_ui_elements():
             await asyncio.sleep(1)  # 等 resume_thread 事件处理完
             try:
-                rows = await _db_ref.execute(
-                    "SELECT element_type, props_json FROM ui_elements "
-                    "WHERE conversation_id = ? ORDER BY created_at ASC",
-                    (_conv_id_ref,),
-                )
-                logger.info("恢复 UI 元素: conv_id=%s, 找到 %d 条", _conv_id_ref, len(rows))
-                for row in rows:
-                    etype = row.get("element_type", "")
-                    props = json.loads(row.get("props_json", "{}"))
-                    element = cl.CustomElement(name=etype, props=props, display="inline")
+                for el in custom_elements:
+                    name = el.get("name", "")
+                    props_raw = el.get("props", "{}")
+                    props = json.loads(props_raw) if isinstance(props_raw, str) else (props_raw or {})
+                    element = cl.CustomElement(name=name, props=props, display="inline")
                     await cl.Message(content="\u200b", elements=[element]).send()
-                    if etype == "JobList" and props.get("jobs"):
-                        id_map = {}
-                        for j in props["jobs"]:
-                            id_map[j["seq"]] = {"id": j["id"], "title": j["title"], "company": j["company"]}
+                    if name == "JobList" and props.get("jobs"):
+                        id_map = {j["seq"]: {"id": j["id"], "title": j["title"], "company": j["company"]} for j in props["jobs"]}
                         cl.user_session.set("job_id_map", id_map)
-                    elif etype == "ActionCard":
+                    elif name == "ActionCard":
                         cl.user_session.set(f"action_card_{props.get('card_type','')}", element)
             except Exception as e:
                 logger.warning("恢复 UI 元素失败: %s", e)
-
         asyncio.create_task(_restore_ui_elements())
 
 
@@ -362,56 +287,14 @@ async def on_chat_start():
     await db.connect()
     await db.init_schema()
     cl.user_session.set("db", db)
+    cl.user_session.set("trace_store", ExecutionTraceStore())
 
-    # --- 初始化 ChatHistoryStore & ExecutionTraceStore ---
-    chat_store = ChatHistoryStore()
-    cl.user_session.set("chat_store", chat_store)
-    trace_store = ExecutionTraceStore()
-    cl.user_session.set("trace_store", trace_store)
-
-    # --- 解析对话 ID ---
-    # 创建新对话（文件 + .active 标记）。
-    # 必须创建文件，因为 Chainlit 的 AutoResumeThread 会触发 resume_thread，
-    # 需要 JSONL 文件存在才能正常恢复。
-    conv_id = await chat_store.create_conversation()
-    print(f">>> on_chat_start: 新建对话 conv_id={conv_id}")
-
-    # on_chat_start 永远不恢复旧消息。新对话 = 空历史。
-    # chat_history 保持为空列表（仅后续注入 system 上下文）。
-
-    cl.user_session.set("conversation_id", conv_id)
-
-    # 同步 Chainlit 的 thread_id，让前端侧边栏能正确高亮当前对话
-    try:
-        cl.context.session.thread_id = conv_id
-    except Exception:
-        pass
-
-    # --- 检查未提取记忆的历史对话 ---
-    # 找最近一个有内容的旧对话，后台跑子 agent 提取记忆
-    try:
-        all_jsonl = sorted(chat_store.base_dir.glob("*.jsonl"))
-        for jf in reversed(all_jsonl):
-            cid = jf.stem
-            if cid == conv_id:
-                continue  # 跳过当前对话
-            if jf.stat().st_size == 0:
-                continue  # 空文件
-            prev_messages = await chat_store.load_history(cid)
-            has_content = any(m.get("role") in ("user", "assistant") for m in prev_messages)
-            if has_content:
-                logger.warning("🧠 对话 %s 未提取记忆，将在后台执行", cid)
-                cl.user_session.set("_pending_extract_conv_id", cid)
-                cl.user_session.set("_pending_extract_messages", prev_messages)
-                break  # 一次只提取一个
-    except Exception as e:
-        logger.warning("检查历史对话记忆提取状态失败: %s", e)
+    # Chainlit DataLayer 自动管理 thread，不需要手动创建
 
     # --- 加载记忆画像摘要 ---
     memory_summary = ""
     try:
-        cognitive_tool = GetUserCognitiveModelTool()
-        result = await cognitive_tool.execute({}, {})
+        result = await GetUserCognitiveModelTool().execute({}, {})
         memory_summary = result.get("summary", "")
     except Exception as e:
         logger.warning("加载记忆画像失败: %s", e)
@@ -442,14 +325,6 @@ async def on_chat_start():
             "⚙️ 请先点击顶部导航栏的「设置」配置 API Key，保存后会自动回到对话。"
         ).send()
     else:
-        # --- 启动上一轮对话的记忆提取（如果有待处理的） ---
-        pending_conv_id = cl.user_session.get("_pending_extract_conv_id")
-        pending_messages = cl.user_session.get("_pending_extract_messages")
-        if pending_conv_id and pending_messages:
-            _launch_memory_extraction(pending_messages, pending_conv_id)
-            cl.user_session.set("_pending_extract_conv_id", None)
-            cl.user_session.set("_pending_extract_messages", None)
-
         # 已配置 — 查用户档案，固定开场白 + 上下文注入
         profile_rows = await db.execute(
             "SELECT name, city, current_role, years_of_experience FROM resumes WHERE is_active = 1 LIMIT 1"
@@ -736,23 +611,18 @@ async def handle_user_message(content: str):
         ).send()
         return
 
-    # --- 持久化用户消息到 JSONL ---
-    chat_store: ChatHistoryStore | None = cl.user_session.get("chat_store")
-    conv_id: str | None = cl.user_session.get("conversation_id")
-    if chat_store and conv_id:
-        try:
-            await chat_store.save_message(conv_id, "user", content)
-        except Exception as e:
-            logger.warning("持久化用户消息失败: %s", e)
+    # Chainlit DataLayer 自动持久化消息（create_step），不需要手动保存
 
     executor = cl.user_session.get("executor")
     system_prompt = cl.user_session.get("system_prompt")
 
-    # 用对话历史直接调 Executor.chat()
-    # LLM 自己决定是纯回复、调工具、还是两者同时
+    if not executor:
+        await cl.Message(content="❌ Agent 未初始化，请刷新页面重试。").send()
+        return
+
     current_step: cl.Step | None = None
     assistant_text = ""
-    pending_elements: list = []  # 攒着，等 AI 回复后再发
+    pending_elements: list = []
     db = cl.user_session.get("db")
 
     # --- 执行轨迹收集 ---
@@ -761,8 +631,9 @@ async def handle_user_message(content: str):
 
     # --- 对话日志 ---
     conv_logger: ConversationLogger | None = None
-    if conv_id:
-        conv_logger = ConversationLogger(conv_id)
+    thread_id = getattr(cl.context.session, "thread_id", None)
+    if thread_id:
+        conv_logger = ConversationLogger(thread_id)
         conv_logger.begin_turn(content)
 
     # 标记 agent 正在处理中（后台任务通知会据此判断是否直接推送 UI）
@@ -824,8 +695,6 @@ async def handle_user_message(content: str):
             element = cl.CustomElement(name="ActionCard", props=card_data, display="inline")
             cl.user_session.set(f"action_card_{card_type}", element)
             pending_elements.append(element)
-            # 持久化
-            await _save_ui_element(db, conv_id, "ActionCard", card_data)
 
         elif event.type == "ui_render":
             for_ui = event.data.get("for_ui", {})
@@ -833,7 +702,6 @@ async def handle_user_message(content: str):
             if element_name:
                 element = cl.CustomElement(name=element_name, props=for_ui, display="inline")
                 pending_elements.append(element)
-                await _save_ui_element(db, conv_id, element_name, for_ui)
                 # JobList 特殊处理：维护序号→ID 映射供后续对话引用
                 if element_name == "JobList" and for_ui.get("jobs"):
                     id_map = {}
@@ -877,23 +745,16 @@ async def handle_user_message(content: str):
     if assistant_text:
         history.append({"role": "assistant", "content": assistant_text})
 
-        # --- 持久化 assistant 回复到 JSONL ---
-        if chat_store and conv_id:
-            try:
-                await chat_store.save_message(conv_id, "assistant", assistant_text)
-            except Exception as e:
-                logger.warning("持久化 assistant 消息失败: %s", e)
-
     # --- 结束对话日志轮次 ---
     if conv_logger:
         conv_logger.end_turn(assistant_text or "(no reply)")
 
     # --- 持久化执行轨迹 ---
     trace_store: ExecutionTraceStore | None = cl.user_session.get("trace_store")
-    if trace_store and conv_id and trace_events:
+    if trace_store and thread_id and trace_events:
         try:
             trace_store.save_trace(
-                conversation_id=conv_id,
+                conversation_id=thread_id,
                 user_message=content,
                 events=trace_events,
                 started_at=trace_started_at,
@@ -932,11 +793,8 @@ def _launch_memory_extraction(history: list[dict], conversation_id: str) -> None
 
         context = {"conversation_id": conversation_id}
 
-        # 获取 chat_store 用于标记提取完成
-        chat_store: ChatHistoryStore | None = cl.user_session.get("chat_store")
-
         logger.info("🧠 启动记忆提取任务，对话 %s，消息数: %d", conversation_id, len(messages))
-        asyncio.create_task(_run_extraction(extractor, messages, context, chat_store, conversation_id))
+        asyncio.create_task(_run_extraction(extractor, messages, context))
     except Exception as e:
         logger.error("🧠 启动记忆提取失败: %s", e, exc_info=True)
 
@@ -945,16 +803,11 @@ async def _run_extraction(
     extractor,
     messages: list[dict],
     context: dict,
-    chat_store: ChatHistoryStore | None = None,
-    conversation_id: str | None = None,
 ) -> None:
-    """运行记忆提取，完成后标记 .extracted，捕获所有异常。"""
+    """运行记忆提取，捕获所有异常。"""
     try:
         logger.info("🧠 开始记忆提取，消息数: %d, 会话: %s", len(messages), context.get("conversation_id", "?"))
         await extractor.extract(messages, context)
-        # 标记提取完成
-        if chat_store and conversation_id:
-            chat_store.mark_memory_extracted(conversation_id)
-        logger.info("🧠 记忆提取完成，已标记 %s", conversation_id)
+        logger.info("🧠 记忆提取完成")
     except Exception as e:
         logger.error("🧠 记忆提取执行失败: %s", e, exc_info=True)

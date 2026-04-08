@@ -727,15 +727,8 @@ async def api_test_chat(request: Request):
             if not tool_calls:
                 break
 
-            # 把 assistant 消息加入历史
-            assistant_msg = {"role": "assistant"}
-            if text_content:
-                assistant_msg["content"] = text_content
-            assistant_msg["tool_calls"] = [
-                {"id": tc.id, "type": "function", "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
-                for tc in tool_calls
-            ]
-            messages.append(assistant_msg)
+            # 把 assistant 消息加入历史（to_dict 保留 Gemini thought_signature）
+            messages.append(choice.message.to_dict())
 
             # 执行每个 tool call
             for tc in tool_calls:
@@ -1366,6 +1359,30 @@ async def api_ai_exposure():
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)})
 
+
+# ---- Chainlit DataLayer (SQLAlchemy + SQLite) ----
+
+import sqlite3 as _sqlite3
+from chainlit.data.sql_alchemy import SQLAlchemyDataLayer
+from chainlit.config import config as _cl_config
+
+_chainlit_db_path = _project_root / "db" / "chainlit.db"
+_chainlit_db_url = f"sqlite+aiosqlite:///{_chainlit_db_path}"
+
+# Create tables
+_schema_path = _project_root / "db" / "chainlit_schema.sql"
+if _schema_path.exists():
+    _conn = _sqlite3.connect(str(_chainlit_db_path))
+    _conn.executescript(_schema_path.read_text())
+    _conn.close()
+
+# Register before mount_chainlit so get_data_layer() finds it
+_cl_config.code.data_layer = lambda: SQLAlchemyDataLayer(conninfo=_chainlit_db_url)
+
+# Also eagerly initialize to prevent race with lazy init
+import chainlit.data as _cl_data
+_cl_data._data_layer = SQLAlchemyDataLayer(conninfo=_chainlit_db_url)
+_cl_data._data_layer_initialized = True
 
 # ---- 挂载 Chainlit ----
 
