@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/switch"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Separator } from "@/components/ui/separator"
 import React, { useState, useMemo } from 'react'
 import { Play, X, Loader2 } from 'lucide-react'
 
@@ -16,16 +17,14 @@ import { Play, X, Loader2 } from 'lucide-react'
  *
  * props 协议：
  * {
- *   card_type: "start_task" | "fetch_detail" | "deliver" | "update_config",
+ *   card_type: "start_task" | "fetch_detail" | "deliver",
  *   title: string,
  *   description: string,
  *   fields: [{ id, label, type, value, required?, options? }],
- *   jobs: [{ id, title, company, salary, city, has_jd }],  // fetch_detail / deliver 时附带
+ *   jobs: [{ id, title, company, salary, city, has_jd }],
  *   status: "pending" | "executing" | "completed" | "failed",
  *   result_message: string
  * }
- *
- * field.type: "text" | "number" | "select" | "switch"
  */
 export default function ActionCard() {
   const fields = props.fields || []
@@ -38,7 +37,6 @@ export default function ActionCard() {
     return init
   })
 
-  // 岗位选择状态（fetch_detail / deliver 场景）
   const [selectedJobIds, setSelectedJobIds] = useState(() => jobs.map(j => j.id))
 
   const allValid = useMemo(() => {
@@ -47,14 +45,11 @@ export default function ActionCard() {
       const v = values[f.id]
       return v !== undefined && v !== ''
     })
-    // 有岗位列表时至少选一个
     if (jobs.length > 0 && selectedJobIds.length === 0) return false
     return fieldsOk
   }, [fields, values, jobs, selectedJobIds])
 
-  const handleChange = (id, val) => {
-    setValues(v => ({ ...v, [id]: val }))
-  }
+  const handleChange = (id, val) => setValues(v => ({ ...v, [id]: val }))
 
   const toggleJob = (jobId) => {
     setSelectedJobIds(prev =>
@@ -70,9 +65,7 @@ export default function ActionCard() {
 
   const handleSubmit = () => {
     const payload = { card_type: props.card_type, params: values }
-    if (jobs.length > 0) {
-      payload.job_ids = selectedJobIds
-    }
+    if (jobs.length > 0) payload.job_ids = selectedJobIds
     callAction({ name: "action_card_submit", payload })
     updateElement({ ...props, status: "executing" })
   }
@@ -97,7 +90,6 @@ export default function ActionCard() {
   const renderField = (field) => {
     const val = values[field.id]
     const disabled = !isPending
-
     switch (field.type) {
       case 'select':
         return (
@@ -105,9 +97,9 @@ export default function ActionCard() {
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
               {(field.options || []).map(opt => {
-                const optVal = typeof opt === 'object' ? opt.value : opt
-                const optLabel = typeof opt === 'object' ? opt.label : opt
-                return <SelectItem key={optVal} value={optVal}>{optLabel}</SelectItem>
+                const v = typeof opt === 'object' ? opt.value : opt
+                const l = typeof opt === 'object' ? opt.label : opt
+                return <SelectItem key={v} value={v}>{l}</SelectItem>
               })}
             </SelectContent>
           </Select>
@@ -125,14 +117,16 @@ export default function ActionCard() {
     <Card className="w-full max-w-2xl mt-2 mb-2">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-base">{props.title || "操作确认"}</CardTitle>
+          <div className="flex items-center gap-2">
+            <CardTitle className="text-base">{props.title || "操作确认"}</CardTitle>
+            <Badge variant="outline" className="text-xs font-normal">猎聘</Badge>
+          </div>
           <Badge variant={statusBadge.variant}>{statusBadge.label}</Badge>
         </div>
         {props.description && <CardDescription>{props.description}</CardDescription>}
       </CardHeader>
 
       <CardContent className="space-y-3">
-        {/* 参数表单 */}
         {fields.map(field => (
           <div key={field.id} className="flex items-center gap-3">
             <Label className="w-24 text-right text-sm shrink-0">
@@ -142,7 +136,6 @@ export default function ActionCard() {
           </div>
         ))}
 
-        {/* 岗位选择列表（fetch_detail / deliver） */}
         {jobs.length > 0 && (
           <div className="mt-2">
             <div className="flex items-center justify-between mb-2">
@@ -187,13 +180,10 @@ export default function ActionCard() {
                 </TableBody>
               </Table>
             </ScrollArea>
-            <p className="text-xs text-muted-foreground mt-1">
-              已选 {selectedJobIds.length} / {jobs.length} 个岗位
-            </p>
+            <p className="text-xs text-muted-foreground mt-1">已选 {selectedJobIds.length} / {jobs.length}</p>
           </div>
         )}
 
-        {/* 结果消息 */}
         {(isCompleted || isFailed) && props.result_message && (
           <div className={`text-sm p-2 rounded ${isCompleted ? 'bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300' : 'bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300'}`}>
             {props.result_message}
@@ -219,6 +209,14 @@ export default function ActionCard() {
           </div>
         </CardFooter>
       )}
+
+      {/* 开源致谢 + 数据来源 */}
+      <div className="px-6 pb-3">
+        <Separator className="mb-2" />
+        <p className="text-[11px] text-muted-foreground">
+          数据采集由开源项目 <a href="https://github.com/loks666/get_jobs" target="_blank" rel="noopener" className="underline">get_jobs</a> 提供支持 · 数据来源：猎聘
+        </p>
+      </div>
     </Card>
   )
 }
