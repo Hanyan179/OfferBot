@@ -157,7 +157,7 @@ class ToolResult:
 @dataclass(frozen=True)
 class AgentEvent:
     """Agent 事件，yield 给 UI 层实时展示"""
-    type: str  # "thought" | "tool_start" | "tool_result" | "completed" | "error" | "max_turns_reached"
+    type: str  # "thought" | "tool_start" | "tool_result" | "completed" | "error" | "max_turns_reached" | "action_card"
     data: dict[str, Any]
     timestamp: datetime
 
@@ -208,6 +208,22 @@ class AgentEvent:
         return AgentEvent(
             type="max_turns_reached",
             data={"turn_count": state.turn_count, "current_step": state.current_step},
+            timestamp=datetime.now(),
+        )
+
+    @staticmethod
+    def action_card(card_data: dict[str, Any]) -> "AgentEvent":
+        return AgentEvent(
+            type="action_card",
+            data=card_data,
+            timestamp=datetime.now(),
+        )
+
+    @staticmethod
+    def ui_render(render_data: dict[str, Any]) -> "AgentEvent":
+        return AgentEvent(
+            type="ui_render",
+            data=render_data,
             timestamp=datetime.now(),
         )
 

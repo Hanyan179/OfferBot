@@ -40,21 +40,34 @@ class ChatHistoryStore:
         return self.base_dir / f"{conversation_id}.jsonl"
 
     async def create_conversation(self) -> str:
-        """创建新会话，返回时间戳格式的会话 ID，创建对应 .jsonl 文件。"""
+        """创建新会话，返回时间戳格式的会话 ID，自动设为 active。"""
         self._ensure_dir()
         conversation_id = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
         filepath = self._conversation_path(conversation_id)
         filepath.touch(exist_ok=True)
+        self.set_active_conversation(conversation_id)
         return conversation_id
 
     async def get_active_conversation_id(self) -> str | None:
-        """扫描文件夹，返回最新的 .jsonl 文件名（去掉扩展名）。"""
+        """读取 .active 标记文件获取当前活跃会话，没有则返回最新的。"""
+        active_file = self.base_dir / ".active"
+        if active_file.exists():
+            cid = active_file.read_text(encoding="utf-8").strip()
+            if cid and self._conversation_path(cid).exists():
+                return cid
+        # fallback: 最新文件
         if not self.base_dir.exists():
             return None
         jsonl_files = sorted(self.base_dir.glob("*.jsonl"))
         if not jsonl_files:
             return None
         return jsonl_files[-1].stem
+
+    def set_active_conversation(self, conversation_id: str) -> None:
+        """设置当前活跃会话 ID（写入 .active 标记文件）。"""
+        self._ensure_dir()
+        active_file = self.base_dir / ".active"
+        active_file.write_text(conversation_id, encoding="utf-8")
 
     async def save_message(
         self,

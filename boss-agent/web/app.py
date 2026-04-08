@@ -619,7 +619,7 @@ async def api_chat(request: Request):
             return JSONResponse({"ok": False, "error": "请先在设置中配置 LLM"})
 
         from openai import AsyncOpenAI
-        client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=60)
+        client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=120)
         resp = await client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": message}],
@@ -675,8 +675,8 @@ async def api_test_chat(request: Request):
     registry, _skill_loader = create_tool_registry()
     client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=120)
 
-    # 构建 OpenAI tools schema
-    tools_schema = registry.get_all_schemas()
+    # 工具集路由：初始只激活 core
+    active_toolsets: set[str] = {"core"}
 
     # 构建消息
     messages = [{"role": "system", "content": build_full_system_prompt()}]
@@ -697,6 +697,9 @@ async def api_test_chat(request: Request):
 
     try:
         for turn in range(max_turns):
+            # 每轮重新获取 schema，确保 activate_toolset 效果立即生效
+            tools_schema = registry.get_schemas_for_toolsets(active_toolsets)
+
             conv_logger.log_llm_request(model=model, message_count=len(messages), has_tools=True)
             llm_start = time.time()
 
@@ -769,6 +772,7 @@ async def api_test_chat(request: Request):
                         result = await tool.execute(tool_args, context={
                             "db": db, "getjob_client": GetjobClient(), "task_monitor": TaskMonitor(),
                             "agent_busy_check": lambda: False, "job_rag": app.state.job_rag,
+                            "active_toolsets": active_toolsets, "registry": registry,
                         })
                         result_str = _json.dumps(result, ensure_ascii=False, default=str)[:2000] if result else "{}"
                         tc_report["success"] = True
@@ -956,19 +960,134 @@ async def api_job_detail(job_id: int):
 
 @app.post("/api/jobs/{job_id}/analysis")
 async def api_save_job_analysis(job_id: int, request: Request):
-    """保存 AI 分析结果到 jobs 表"""
+    """AI 深度分析：后端分步处理，精准匹配。"""
     import json as _json
-    body = await request.json()
-    analysis = body.get("analysis")
-    if not analysis:
-        return JSONResponse({"error": "缺少 analysis"}, status_code=400)
-    score = analysis.get("overall_score", 0)
+
     db = await _get_db()
+
+    # 1. 读岗位数据
+    rows = await db.execute(
+        "SELECT id, title, company, salary_min, salary_max, salary_months, city, "
+        "experience, education, company_size, company_industry, raw_jd "
+        "FROM jobs WHERE id = ?", (job_id,)
+    )
+    if not rows:
+        return JSONResponse({"ok": False, "error": "岗位不存在"}, status_code=404)
+    job = rows[0]
+
+    raw_jd = job.get("raw_jd") or ""
+    if not raw_jd:
+        return JSONResponse({"ok": False, "error": "该岗位暂无 JD 数据，请先获取详情"})
+
+    # 2. 读用户简历（只取分析需要的字段）
+    resume_data = await _load_active_resume(db)
+
+    resume_section = ""
+    if resume_data.get("name"):
+        skills = ", ".join(resume_data.get("tech_stack") or [])
+        work_exp = []
+        for w in (resume_data.get("work_experience") or [])[:3]:
+            ts = w.get("tech_stack", "")
+            if isinstance(ts, list):
+                ts = ", ".join(ts)
+            work_exp.append(f"{w.get('role','')}@{w.get('company','')}({w.get('duration','')}): {ts}")
+        projects = []
+        for p in (resume_data.get("projects") or [])[:3]:
+            ts = p.get("tech_stack", "")
+            if isinstance(ts, list):
+                ts = ", ".join(ts)
+            projects.append(f"{p.get('name','')}: {ts}")
+
+        jp = resume_data.get("job_preferences") or {}
+        resume_section = f"""
+候选人信息：
+- 学历：{resume_data.get('education','未知')}，{resume_data.get('major','')}，{resume_data.get('school','')}
+- 工作年限：{resume_data.get('experience','未知')}
+- 当前职位：{resume_data.get('current_role','')}（{resume_data.get('current_company','')}）
+- 核心技能：{skills}
+- 工作经历：{'; '.join(work_exp)}
+- 项目经验：{'; '.join(projects)}
+- 期望薪资：{jp.get('salary_min','?')}-{jp.get('salary_max','?')}K
+- 期望城市：{jp.get('target_cities','未知')}"""
+
+    # 3. 读记忆画像（职业规划、求职目标、要点信息等软性维度）
+    memory_section = ""
+    from pathlib import Path as _MemPath
+    memory_dir = _MemPath(__file__).parent.parent / "data" / "记忆画像"
+    relevant_files = ["职业规划.md", "求职冲刺目标.md", "要点信息.md", "个人需求.md", "价值观.md"]
+    memory_parts = []
+    for fname in relevant_files:
+        fpath = memory_dir / fname
+        if fpath.exists():
+            content = fpath.read_text(encoding="utf-8").strip()
+            if content and len(content) > 20:
+                # 截取前 500 字，避免 prompt 过长
+                memory_parts.append(f"【{fname.replace('.md','')}】\n{content[:500]}")
+    if memory_parts:
+        memory_section = "\n\n候选人画像（来自对话记忆，反映真实偏好和软性特征）：\n" + "\n\n".join(memory_parts)
+
+    # 3. 构建精准 prompt
+    salary = _format_salary(job.get("salary_min"), job.get("salary_max"))
+    prompt = f"""你是一位专业的求职顾问。请对以下岗位与候选人进行匹配分析。
+
+分析需要结合两个维度：
+1. 简历 vs JD：硬性条件对比（技能、学历、经验、薪资）
+2. 画像 vs JD：软性匹配（职业方向契合度、文化偏好、成长空间）
+
+严格按以下 JSON 格式返回，不要输出任何其他内容：
+{{"overall_score":0-100,"verdict":"一句话结论","summary":"2-3句总体分析","hard_check":[{{"dimension":"学历","requirement":"","candidate":"","status":"pass/fail/warn/na","note":""}},{{"dimension":"经验年限","requirement":"","candidate":"","status":"","note":""}},{{"dimension":"薪资匹配","requirement":"","candidate":"","status":"","note":""}},{{"dimension":"城市","requirement":"","candidate":"","status":"","note":""}}],"dimensions":[{{"name":"技术匹配","score":0-100,"detail":""}},{{"name":"经验匹配","score":0-100,"detail":""}},{{"name":"项目相关性","score":0-100,"detail":""}},{{"name":"职业方向契合","score":0-100,"detail":"基于候选人画像中的职业规划和求职目标"}},{{"name":"文化与偏好契合","score":0-100,"detail":"基于候选人画像中的价值观和个人需求"}}],"skills":{{"matched":[],"missing":[],"bonus":[]}},"strengths":[],"gaps":[],"suggestions":[],"interview_tips":[],"profile_insights":"基于候选人画像的额外洞察（如：该岗位是否符合候选人的长期规划、是否匹配其偏好的工作模式等），2-3句话"}}
+
+岗位信息：
+- 职位：{job.get('title','')}
+- 公司：{job.get('company','')}（{job.get('company_industry','未知')}，{job.get('company_size','未知')}）
+- 薪资：{salary}{('·'+str(job.get('salary_months'))+'薪') if job.get('salary_months') else ''}
+- 城市：{job.get('city','')}
+- 经验要求：{job.get('experience','未知')}
+- 学历要求：{job.get('education','未知')}
+- JD：{raw_jd[:1500]}
+{resume_section}
+{memory_section}"""
+
+    # 4. 调 LLM
+    settings = await _load_llm_settings(db)
+    api_key = settings.get("llm_api_key", "")
+    base_url = settings.get("llm_base_url", "")
+    model = settings.get("llm_model", "")
+    if not api_key or not base_url or not model:
+        return JSONResponse({"ok": False, "error": "请先在设置中配置 LLM"})
+
+    try:
+        from openai import AsyncOpenAI
+        client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=120)
+        resp = await client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        reply = resp.choices[0].message.content or ""
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": f"LLM 调用失败: {e}"})
+
+    # 5. 解析 JSON
+    analysis = None
+    try:
+        import re
+        m = re.search(r'\{[\s\S]*\}', reply)
+        if m:
+            analysis = _json.loads(m.group(0))
+    except Exception:
+        pass
+
+    if not analysis:
+        return JSONResponse({"ok": False, "error": "LLM 返回格式异常", "raw_reply": reply[:500]})
+
+    # 6. 持久化
+    score = analysis.get("overall_score", 0)
     await db.execute_write(
         "UPDATE jobs SET match_score = ?, match_detail = ?, parsed_at = CURRENT_TIMESTAMP WHERE id = ?",
         (score, _json.dumps(analysis, ensure_ascii=False), job_id),
     )
-    return JSONResponse({"ok": True})
+
+    return JSONResponse({"ok": True, "analysis": analysis})
 
 
 @app.post("/api/jobs/{job_id}/fetch-detail")

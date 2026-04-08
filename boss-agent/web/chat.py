@@ -51,6 +51,39 @@ PROVIDER_PRESETS = {
 }
 
 
+async def _save_ui_element(db, conv_id: str | None, element_type: str, props: dict):
+    """持久化 UI 元素到数据库，供对话恢复时重建。"""
+    if not db or not conv_id:
+        return
+    try:
+        await db.execute_write(
+            "CREATE TABLE IF NOT EXISTS ui_elements ("
+            "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "  conversation_id TEXT NOT NULL,"
+            "  element_type TEXT NOT NULL,"
+            "  props_json TEXT NOT NULL,"
+            "  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+            ")"
+        )
+        # 去重 key：element_type + card_type（如果有）
+        # ActionCard 按 card_type 区分，其他组件按 element_type 整体替换
+        dedup_key = element_type
+        card_type = props.get("card_type")
+        if card_type:
+            dedup_key = f"{element_type}:{card_type}"
+        await db.execute_write(
+            "DELETE FROM ui_elements WHERE conversation_id = ? AND element_type = ? "
+            "AND COALESCE(json_extract(props_json, '$.card_type'), '') = ?",
+            (conv_id, element_type, card_type or ""),
+        )
+        await db.execute_write(
+            "INSERT INTO ui_elements (conversation_id, element_type, props_json) VALUES (?, ?, ?)",
+            (conv_id, element_type, json.dumps(props, ensure_ascii=False, default=str)),
+        )
+    except Exception as e:
+        logger.warning("持久化 UI 元素失败: %s", e)
+
+
 async def _ensure_agent_ready(db: Database, config) -> bool:
     """确保 Agent 已初始化。配置变了则重新初始化。"""
     llm_config = await _load_llm_config(db)
@@ -169,6 +202,8 @@ def _format_tool_result(data: dict) -> str:
 @cl.on_chat_resume
 async def on_chat_resume(thread):
     """Chainlit 侧边栏点击历史对话时触发 — 恢复对话上下文并继续对话。"""
+    tid = thread.get("id") if isinstance(thread, dict) else getattr(thread, "id", "?")
+    print(f">>> on_chat_resume 触发, thread_id={tid}")
     config = load_config()
     cl.user_session.set("config", config)
     cl.user_session.set("chat_history", [])
@@ -248,7 +283,6 @@ async def on_chat_resume(thread):
             history.insert(idx, {"role": "system", "content": f"[用户记忆画像]\n{memory_summary}"})
         cl.user_session.set("chat_history", history)
 
-        # 空对话（没有历史消息）时显示欢迎语
         has_history = any(m.get("role") in ("user", "assistant") for m in (restored or []))
         if not has_history:
             if has_profile:
@@ -273,13 +307,49 @@ async def on_chat_resume(thread):
                 )
             await cl.Message(content=welcome).send()
 
+    # ---- 恢复 UI 元素 ----
+    # 注意：on_chat_resume 之后 Chainlit 会发 resume_thread 事件，
+    # 前端收到后用纯文本 steps 执行 setMessages() 覆盖所有消息。
+    # 所以这里的 UI 元素必须延迟发送，等 resume_thread 处理完。
+    if conv_id and db:
+        _db_ref = db
+        _conv_id_ref = conv_id
+
+        async def _restore_ui_elements():
+            await asyncio.sleep(1)  # 等 resume_thread 事件处理完
+            try:
+                rows = await _db_ref.execute(
+                    "SELECT element_type, props_json FROM ui_elements "
+                    "WHERE conversation_id = ? ORDER BY created_at ASC",
+                    (_conv_id_ref,),
+                )
+                logger.info("恢复 UI 元素: conv_id=%s, 找到 %d 条", _conv_id_ref, len(rows))
+                for row in rows:
+                    etype = row.get("element_type", "")
+                    props = json.loads(row.get("props_json", "{}"))
+                    element = cl.CustomElement(name=etype, props=props, display="inline")
+                    await cl.Message(content="\u200b", elements=[element]).send()
+                    if etype == "JobList" and props.get("jobs"):
+                        id_map = {}
+                        for j in props["jobs"]:
+                            id_map[j["seq"]] = {"id": j["id"], "title": j["title"], "company": j["company"]}
+                        cl.user_session.set("job_id_map", id_map)
+                    elif etype == "ActionCard":
+                        cl.user_session.set(f"action_card_{props.get('card_type','')}", element)
+            except Exception as e:
+                logger.warning("恢复 UI 元素失败: %s", e)
+
+        asyncio.create_task(_restore_ui_elements())
+
 
 @cl.on_chat_start
 async def on_chat_start():
     # 防止 WebSocket 重连导致重复执行
     if cl.user_session.get("_chat_started"):
+        print(">>> on_chat_start 跳过（已启动）")
         return
     cl.user_session.set("_chat_started", True)
+    print(">>> on_chat_start 触发")
 
     config = load_config()
     cl.user_session.set("config", config)
@@ -299,37 +369,14 @@ async def on_chat_start():
     cl.user_session.set("trace_store", trace_store)
 
     # --- 解析对话 ID ---
-    # 优先读 .pending_new（前端新建对话时写入），读后立即删除
-    pending_file = chat_store.base_dir / ".pending_new"
-    pending_id: str | None = None
-    if pending_file.exists():
-        pending_id = pending_file.read_text(encoding="utf-8").strip() or None
-        try:
-            pending_file.unlink()
-        except OSError:
-            pass
+    # 创建新对话（文件 + .active 标记）。
+    # 必须创建文件，因为 Chainlit 的 AutoResumeThread 会触发 resume_thread，
+    # 需要 JSONL 文件存在才能正常恢复。
+    conv_id = await chat_store.create_conversation()
+    print(f">>> on_chat_start: 新建对话 conv_id={conv_id}")
 
-    if pending_id:
-        conv_id = pending_id
-        conv_path = chat_store._conversation_path(conv_id)
-        conv_path.parent.mkdir(parents=True, exist_ok=True)
-        conv_path.touch(exist_ok=True)
-        chat_store.set_active_conversation(conv_id)
-    else:
-        conv_id = await chat_store.get_active_conversation_id()
-        if not conv_id:
-            conv_id = await chat_store.create_conversation()
-
-    # on_chat_start 永远不恢复旧消息到 UI。
-    # 旧消息只通过 on_chat_resume（点击侧边栏历史对话）恢复。
-    # 但仍然加载历史到 chat_history 内存（供 LLM 上下文使用）。
-    restored_messages = []
-    conv_path = chat_store._conversation_path(conv_id)
-    if conv_path.exists() and conv_path.stat().st_size > 0:
-        restored = await chat_store.load_history(conv_id)
-        if restored:
-            history = [{"role": m["role"], "content": m["content"]} for m in restored if m.get("role") in ("user", "assistant", "system")]
-            cl.user_session.set("chat_history", history)
+    # on_chat_start 永远不恢复旧消息。新对话 = 空历史。
+    # chat_history 保持为空列表（仅后续注入 system 上下文）。
 
     cl.user_session.set("conversation_id", conv_id)
 
@@ -340,15 +387,13 @@ async def on_chat_start():
         pass
 
     # --- 检查未提取记忆的历史对话 ---
-    # 找最近一个有内容但未提取的对话，后台跑子 agent
+    # 找最近一个有内容的旧对话，后台跑子 agent 提取记忆
     try:
         all_jsonl = sorted(chat_store.base_dir.glob("*.jsonl"))
         for jf in reversed(all_jsonl):
             cid = jf.stem
             if cid == conv_id:
                 continue  # 跳过当前对话
-            if chat_store.is_memory_extracted(cid):
-                continue  # 已提取
             if jf.stat().st_size == 0:
                 continue  # 空文件
             prev_messages = await chat_store.load_history(cid)
@@ -466,6 +511,148 @@ async def on_scenario_action(action: cl.Action):
         await handle_user_message(prompt)
 
 
+@cl.action_callback("action_card_submit")
+async def on_action_card_submit(action: cl.Action):
+    """用户在 ActionCard 上确认执行后的回调。"""
+    import time as _time
+    payload = action.payload or {}
+    card_type = payload.get("card_type", "unknown")
+    params = payload.get("params", {})
+    job_ids = payload.get("job_ids", [])
+
+    card_el = cl.user_session.get(f"action_card_{card_type}")
+    if card_el:
+        card_el.props["status"] = "executing"
+        await card_el.update()
+
+    if card_type == "start_task":
+        await _execute_start_task(params, card_el)
+    elif card_type == "fetch_detail":
+        await _execute_fetch_detail(params, job_ids, card_el)
+    elif card_type == "deliver":
+        await _execute_deliver(params, job_ids, card_el)
+    else:
+        if card_el:
+            card_el.props["status"] = "failed"
+            card_el.props["result_message"] = f"未知操作类型: {card_type}"
+            await card_el.update()
+
+
+async def _execute_start_task(params: dict, card_el):
+    """执行爬取：update_config → start_task → 后台轮询 → 推送任务面板"""
+    import time as _time
+    import json as _json
+    getjob_client = cl.user_session.get("getjob_client")
+    if not getjob_client:
+        if card_el:
+            card_el.props["status"] = "failed"
+            card_el.props["result_message"] = "getjob 服务未配置"
+            await card_el.update()
+        return
+
+    platform = "liepin"
+    config_data = {k: params[k] for k in ("keywords", "city", "salaryCode", "workYearCode", "eduLevel", "maxPages", "maxItems") if k in params and params[k] not in (None, "")}
+    config_data["scrapeOnly"] = True
+
+    if config_data:
+        await getjob_client.update_config(platform, config_data)
+
+    result = await getjob_client.start_task(platform)
+    if not result.get("success"):
+        if card_el:
+            card_el.props["status"] = "failed"
+            card_el.props["result_message"] = result.get("error", "启动失败")
+            await card_el.update()
+        return
+
+    if card_el:
+        card_el.props["status"] = "completed"
+        card_el.props["result_message"] = "爬取任务已启动！进度请看右侧面板 →"
+        await card_el.update()
+
+    task_monitor = cl.user_session.get("task_monitor")
+    if task_monitor:
+        task_id = f"{platform}-{int(_time.time())}"
+        db = cl.user_session.get("db")
+
+        async def _on_complete(p: str) -> dict:
+            from tools.getjob.platform_sync import SyncJobsTool
+            if not db:
+                return {}
+            return await SyncJobsTool().execute({"platform": p}, {"db": db, "getjob_client": getjob_client})
+
+        task_monitor.start_polling(
+            task_id=task_id, platform=platform, client=getjob_client,
+            on_complete=_on_complete,
+            agent_busy_check=lambda: cl.user_session.get("agent_busy", False),
+        )
+
+    await cl.send_window_message(_json.dumps({
+        "type": "task_panel_update",
+        "tasks": [{"task_id": f"{platform}-{int(_time.time())}", "name": "爬取岗位列表", "platform": platform, "status": "running", "progress_text": "启动中...", "elapsed_s": 0}],
+    }))
+
+
+async def _execute_fetch_detail(params: dict, job_ids: list, card_el):
+    """执行批量获取岗位详情"""
+    if not job_ids:
+        if card_el:
+            card_el.props["status"] = "failed"
+            card_el.props["result_message"] = "未选择岗位"
+            await card_el.update()
+        return
+
+    from tools.getjob.fetch_detail import FetchJobDetailTool
+    db = cl.user_session.get("db")
+    result = await FetchJobDetailTool().execute(
+        {"job_ids": job_ids, "force": params.get("force", False)},
+        {"db": db, "getjob_client": cl.user_session.get("getjob_client"), "job_rag": cl.user_session.get("job_rag")},
+    )
+    if card_el:
+        if result.get("success"):
+            card_el.props["status"] = "completed"
+            card_el.props["result_message"] = f"完成：获取 {result.get('fetched', 0)} 条，跳过 {result.get('skipped', 0)} 条"
+        else:
+            card_el.props["status"] = "failed"
+            card_el.props["result_message"] = result.get("error", "获取失败")
+        await card_el.update()
+
+
+async def _execute_deliver(params: dict, job_ids: list, card_el):
+    """执行投递打招呼"""
+    if not job_ids:
+        if card_el:
+            card_el.props["status"] = "failed"
+            card_el.props["result_message"] = "未选择岗位"
+            await card_el.update()
+        return
+
+    from tools.getjob.platform_deliver import PlatformDeliverTool
+    result = await PlatformDeliverTool().execute(
+        {"platform": "liepin", "job_ids": job_ids},
+        {"getjob_client": cl.user_session.get("getjob_client")},
+    )
+    if card_el:
+        if result.get("success"):
+            card_el.props["status"] = "completed"
+            card_el.props["result_message"] = "投递完成！"
+        else:
+            card_el.props["status"] = "failed"
+            card_el.props["result_message"] = result.get("error", "投递失败")
+        await card_el.update()
+
+
+@cl.action_callback("action_card_cancel")
+async def on_action_card_cancel(action: cl.Action):
+    """用户取消操作卡片"""
+    card_type = (action.payload or {}).get("card_type", "unknown")
+    card_el = cl.user_session.get(f"action_card_{card_type}")
+    if card_el:
+        card_el.props["status"] = "failed"
+        card_el.props["result_message"] = "已取消"
+        await card_el.update()
+
+
 async def _parse_file(file_path: str, file_name: str = "") -> str | None:
     """解析上传的文件，返回文本内容。支持 .md/.txt/.pdf/.doc/.docx"""
     from pathlib import Path as _P
@@ -564,6 +751,7 @@ async def handle_user_message(content: str):
     # LLM 自己决定是纯回复、调工具、还是两者同时
     current_step: cl.Step | None = None
     assistant_text = ""
+    pending_elements: list = []  # 攒着，等 AI 回复后再发
     db = cl.user_session.get("db")
 
     # --- 执行轨迹收集 ---
@@ -591,11 +779,15 @@ async def handle_user_message(content: str):
                     think_step.output = thinking_text
 
         elif event.type == "assistant_message":
-            # LLM 的文本回复 — 直接展示给用户
+            # LLM 的文本回复
             text = event.data.get("content", "")
             if text:
                 assistant_text = text
                 await cl.Message(content=text).send()
+            # 不管有没有文字，都把攒着的 UI 元素发出去
+            for el in pending_elements:
+                await cl.Message(content="\u200b", elements=[el]).send()
+            pending_elements = []
 
         elif event.type == "tool_start":
             tool_name = event.data.get("tool_name", "unknown")
@@ -612,11 +804,41 @@ async def handle_user_message(content: str):
 
             if current_step is not None:
                 if success:
-                    current_step.output = _format_tool_result(data)
+                    # 分流结果只在 Step 里显示 for_agent 摘要，不显示 for_ui 的完整数据
+                    step_data = data
+                    if isinstance(data, dict):
+                        for v in data.values():
+                            if isinstance(v, dict) and "for_agent" in v:
+                                step_data = {k: v.get("for_agent") for k, v in data.items() if isinstance(v, dict) and "for_agent" in v}
+                                break
+                    current_step.output = _format_tool_result(step_data)
                 else:
                     current_step.output = "❌ 执行失败"
                 await current_step.__aexit__(None, None, None)
                 current_step = None
+
+        elif event.type == "action_card":
+            card_data = event.data
+            card_type = card_data.get("card_type", "unknown")
+            element = cl.CustomElement(name="ActionCard", props=card_data, display="inline")
+            cl.user_session.set(f"action_card_{card_type}", element)
+            pending_elements.append(element)
+            # 持久化
+            await _save_ui_element(db, conv_id, "ActionCard", card_data)
+
+        elif event.type == "ui_render":
+            for_ui = event.data.get("for_ui", {})
+            element_name = for_ui.pop("element_name", None)
+            if element_name:
+                element = cl.CustomElement(name=element_name, props=for_ui, display="inline")
+                pending_elements.append(element)
+                await _save_ui_element(db, conv_id, element_name, for_ui)
+                # JobList 特殊处理：维护序号→ID 映射供后续对话引用
+                if element_name == "JobList" and for_ui.get("jobs"):
+                    id_map = {}
+                    for j in for_ui["jobs"]:
+                        id_map[j["seq"]] = {"id": j["id"], "title": j["title"], "company": j["company"]}
+                    cl.user_session.set("job_id_map", id_map)
 
         elif event.type == "error":
             error_text = event.data.get("message", "")
@@ -643,6 +865,12 @@ async def handle_user_message(content: str):
 
     # agent 处理完毕
     cl.user_session.set("agent_busy", False)
+
+    # 兜底：如果还有未发的 UI 元素（AI 没有文字回复的情况）
+    if pending_elements:
+        for el in pending_elements:
+            await cl.Message(content="\u200b", elements=[el]).send()
+        pending_elements = []
 
     # 记录 assistant 回复到历史
     if assistant_text:

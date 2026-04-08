@@ -221,13 +221,36 @@ class GetInterviewFunnelTool(Tool):
                 return 0.0
             return stage_counts.get(numerator_stage, 0) / denom
 
-        return {
+        funnel_data = {
             "total_applied": total_applied,
             "viewed_rate": rate("viewed", "applied"),
             "replied_rate": rate("replied", "viewed"),
             "interview_rate": rate("interview_scheduled", "replied"),
             "offer_rate": rate("offer", "interview_scheduled"),
             "stage_counts": stage_counts,
+        }
+
+        # 构建漏斗可视化数据
+        funnel_stages = []
+        for stage in FUNNEL_STAGES:
+            funnel_stages.append({"stage": stage, "count": stage_counts.get(stage, 0)})
+
+        # 面试列表（最近的面试记录）
+        interviews = await db.execute(
+            "SELECT a.id, j.title, j.company, it.current_stage, it.updated_at "
+            "FROM interview_tracking it "
+            "JOIN applications a ON it.application_id = a.id "
+            "JOIN jobs j ON a.job_id = j.id "
+            "ORDER BY it.updated_at DESC LIMIT 20"
+        )
+
+        return {
+            "for_ui": {
+                "element_name": "InterviewTracker",
+                "funnel": funnel_stages,
+                "interviews": [dict(r) for r in interviews],
+            },
+            "for_agent": funnel_data,
         }
 
 

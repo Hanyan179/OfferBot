@@ -112,7 +112,7 @@ html.dark .ai-text { color:#bbb; }
 <body>
 
 <div class="top-bar">
-  <a class="back-btn" onclick="history.back()">← 返回列表</a>
+  <a class="back-btn" id="backBtn" onclick="history.back()" style="display:none">← 返回列表</a>
 </div>
 
 <div class="main">
@@ -143,6 +143,11 @@ html.dark .ai-text { color:#bbb; }
 const API = window.parent?.location?.origin || location.origin;
 const jobId = location.pathname.split('/').pop();
 let jobData = null;
+
+// 只有从站内列表页跳过来时显示返回按钮（新标签页打开时 referrer 为空或来自对话页）
+if (document.referrer && document.referrer.includes('/page/jobs')) {
+  document.getElementById('backBtn').style.display = '';
+}
 
 async function load() {
   try {
@@ -253,95 +258,38 @@ async function runAI() {
   const el = document.getElementById('aiResult');
   btn.disabled = true; btn.textContent = '⏳ 分析中...';
   el.className = 'ai-result visible';
-  el.innerHTML = '<div class="ai-loading">AI 正在进行多维匹配分析，请稍候...</div>';
-
-  // 先获取用户简历
-  let resumeInfo = '';
-  try {
-    const rr = await fetch(`${API}/api/resume`);
-    if (rr.ok) {
-      const rd = await rr.json();
-      if (rd.resume) {
-        const r = rd.resume;
-        resumeInfo = `
-用户简历：
-- 姓名：${r.name || '未知'}
-- 学历：${r.education_level || '未知'}，${r.education_major || ''}，${r.school || ''}
-- 工作年限：${r.years_of_experience || '未知'}年
-- 当前职位：${r.current_role || ''}（${r.current_company || ''}）
-- 技术栈：${(r.skills_flat || []).join(', ')}
-- 项目经验：${(r.projects || []).map(p => p.name).join(', ')}
-- 个人亮点：${(r.highlights || []).join('; ')}
-- 求职意向：${(r.target_roles || []).join(', ')}
-- 期望薪资：${r.salary_min || '?'}-${r.salary_max || '?'}K`;
-      }
-    }
-  } catch(e) {}
-
-  const prompt = `你是一位专业的求职顾问。请对以下岗位与候选人进行多维度深度匹配分析。
-
-严格按以下 JSON 格式返回，不要输出任何其他内容：
-{
-  "overall_score": 0-100整数,
-  "verdict": "一句话结论（如：高度匹配，建议优先投递）",
-  "summary": "2-3句总体分析",
-  "hard_check": [
-    {"dimension": "学历", "requirement": "岗位要求", "candidate": "候选人情况", "status": "pass/fail/warn/na", "note": "简短说明"},
-    {"dimension": "经验年限", "requirement": "", "candidate": "", "status": "", "note": ""},
-    {"dimension": "薪资匹配", "requirement": "", "candidate": "", "status": "", "note": ""},
-    {"dimension": "城市", "requirement": "", "candidate": "", "status": "", "note": ""},
-    {"dimension": "学校背景", "requirement": "", "candidate": "", "status": "", "note": ""},
-    {"dimension": "行业经验", "requirement": "", "candidate": "", "status": "", "note": ""}
-  ],
-  "dimensions": [
-    {"name": "技术匹配", "score": 0-100, "detail": "简要说明"},
-    {"name": "经验匹配", "score": 0-100, "detail": ""},
-    {"name": "项目相关性", "score": 0-100, "detail": ""},
-    {"name": "成长潜力", "score": 0-100, "detail": ""},
-    {"name": "文化契合", "score": 0-100, "detail": ""}
-  ],
-  "skills": {
-    "matched": ["匹配的技能"],
-    "missing": ["缺少的核心技能"],
-    "bonus": ["候选人有但JD未要求的加分技能"]
-  },
-  "strengths": ["优势1", "优势2"],
-  "gaps": ["差距1", "差距2"],
-  "suggestions": ["建议1", "建议2"],
-  "interview_tips": ["面试准备建议1", "建议2"]
-}
-
-岗位信息：
-- 职位：${jobData.title}
-- 公司：${jobData.company}
-- 薪资：${jobData.salary}${jobData.salary_months ? '·'+jobData.salary_months+'薪' : ''}
-- 城市：${jobData.city}
-- 经验要求：${jobData.experience || '未知'}
-- 学历要求：${jobData.education || '未知'}
-- 公司规模：${jobData.company_size || '未知'}
-- 行业：${jobData.company_industry || '未知'}
-- JD：${(jobData.raw_jd || '无').substring(0, 2000)}
-${resumeInfo}`;
+  el.innerHTML = '<div class="ai-loading">AI 正在进行多维匹配分析...<br><span style="font-size:11px;color:#999;">通常需要 15-30 秒，请耐心等待</span></div>';
 
   try {
-    const resp = await fetch(`${API}/api/chat`, {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({message: prompt})
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 120000);
+
+    const resp = await fetch(`${API}/api/jobs/${jobId}/analysis`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: '{}',
+      signal: controller.signal,
     });
+    clearTimeout(timeout);
+
     const data = await resp.json();
-    const reply = data.reply || '';
-    let analysis = null;
-    try { const m = reply.match(/\{[\s\S]*\}/); if (m) analysis = JSON.parse(m[0]); } catch(e) {}
-    if (analysis) {
-      renderAnalysis(analysis);
-      // 持久化到数据库
-      fetch(`${API}/api/jobs/${jobId}/analysis`, {
-        method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({analysis})
-      }).catch(() => {});
+    if (!data.ok) {
+      el.innerHTML = `<div class="ai-error">分析失败: ${esc(data.error || '未知错误')}</div>`;
+      btn.disabled = false; btn.textContent = '🤖 重新分析';
+      return;
     }
-    else el.innerHTML = `<div class="ai-card"><div class="ai-text">${esc(reply)}</div></div>`;
-  } catch(e) { el.innerHTML = `<div class="ai-error">分析失败: ${e.message}</div>`; }
+
+    renderAnalysis(data.analysis);
+    // 更新本地数据
+    jobData.match_detail = JSON.stringify(data.analysis);
+    jobData.match_score = data.analysis.overall_score;
+  } catch(e) {
+    if (e.name === 'AbortError') {
+      el.innerHTML = '<div class="ai-error">分析超时（超过 2 分钟），请重试</div>';
+    } else {
+      el.innerHTML = `<div class="ai-error">分析失败: ${esc(e.message)}</div>`;
+    }
+  }
   btn.disabled = false; btn.textContent = '🤖 重新分析';
 }
 
@@ -430,6 +378,11 @@ function renderAnalysis(a) {
       h += `</ul></div>`;
     }
     h += `</div>`;
+  }
+
+  // 画像洞察
+  if (a.profile_insights) {
+    h += `<div class="ai-card"><div class="ai-card-title">🧠 画像洞察</div><div class="ai-text">${esc(a.profile_insights)}</div></div>`;
   }
 
   el.innerHTML = h;

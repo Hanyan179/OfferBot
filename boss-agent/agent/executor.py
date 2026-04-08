@@ -119,8 +119,14 @@ class Executor:
             from agent.system_prompt import SYSTEM_PROMPT
             system_prompt = SYSTEM_PROMPT
 
-        # 构建工具定义
-        tools = self._registry.get_all_schemas() if self._registry else []
+        # 初始化 context 和 active_toolsets
+        if context is None:
+            context = {}
+        if "active_toolsets" not in context:
+            context["active_toolsets"] = {"core"}
+        # 注入 registry 引用（供 activate_toolset 使用）
+        if self._registry and "registry" not in context:
+            context["registry"] = self._registry
 
         # 构建完整消息列表（system prompt + 对话历史）
         full_messages: list[dict] = [
@@ -130,6 +136,13 @@ class Executor:
 
         turn = 0
         while turn < max_turns:
+            # 每轮重新获取工具 Schema（activate_toolset 可能已修改 active_toolsets）
+            tools = (
+                self._registry.get_schemas_for_toolsets(context["active_toolsets"])
+                if self._registry
+                else []
+            )
+
             # 调用 LLM（带 function calling）
             try:
                 response = await self._llm.chat_with_tools(
@@ -197,9 +210,35 @@ class Executor:
                 result = await self._execute_tool(call, context or {}, max_retries=3)
                 yield AgentEvent.tool_result(result)
 
-                # 把工具结果加入消息历史（控制 token：大结果只保留摘要）
+                # 检查是否为 action_card（需要用户确认的操作）
                 result_content = result.message.content if result.message else ""
-                if len(result_content) > 2000:
+                is_action_card = False
+                is_ui_render = False
+                try:
+                    result_parsed = json.loads(result_content)
+                    if isinstance(result_parsed, dict):
+                        if result_parsed.get("action") == "confirm_required":
+                            yield AgentEvent.action_card(result_parsed)
+                            is_action_card = True
+                            result_content = json.dumps({
+                                "action": "confirm_required",
+                                "card_type": result_parsed.get("card_type"),
+                                "message": "已生成操作卡片，等待用户在 UI 上确认后执行。你可以继续对话。"
+                            }, ensure_ascii=False)
+                        elif "for_ui" in result_parsed and "for_agent" in result_parsed:
+                            # 结果分流：for_ui 推前端渲染，for_agent 给 LLM
+                            yield AgentEvent.ui_render({
+                                "tool_name": tool_name,
+                                "for_ui": result_parsed["for_ui"],
+                            })
+                            is_ui_render = True
+                            result_content = json.dumps(
+                                result_parsed["for_agent"], ensure_ascii=False
+                            )
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+                if not is_action_card and not is_ui_render and len(result_content) > 2000:
                     # 尝试解析 JSON，提取关键字段做摘要
                     try:
                         import json as _json
