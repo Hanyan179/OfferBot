@@ -466,6 +466,148 @@ async def on_scenario_action(action: cl.Action):
         await handle_user_message(prompt)
 
 
+@cl.action_callback("action_card_submit")
+async def on_action_card_submit(action: cl.Action):
+    """用户在 ActionCard 上确认执行后的回调。"""
+    import time as _time
+    payload = action.payload or {}
+    card_type = payload.get("card_type", "unknown")
+    params = payload.get("params", {})
+    job_ids = payload.get("job_ids", [])
+
+    card_el = cl.user_session.get(f"action_card_{card_type}")
+    if card_el:
+        card_el.props["status"] = "executing"
+        await card_el.update()
+
+    if card_type == "start_task":
+        await _execute_start_task(params, card_el)
+    elif card_type == "fetch_detail":
+        await _execute_fetch_detail(params, job_ids, card_el)
+    elif card_type == "deliver":
+        await _execute_deliver(params, job_ids, card_el)
+    else:
+        if card_el:
+            card_el.props["status"] = "failed"
+            card_el.props["result_message"] = f"未知操作类型: {card_type}"
+            await card_el.update()
+
+
+async def _execute_start_task(params: dict, card_el):
+    """执行爬取：update_config → start_task → 后台轮询 → 推送任务面板"""
+    import time as _time
+    import json as _json
+    getjob_client = cl.user_session.get("getjob_client")
+    if not getjob_client:
+        if card_el:
+            card_el.props["status"] = "failed"
+            card_el.props["result_message"] = "getjob 服务未配置"
+            await card_el.update()
+        return
+
+    platform = "liepin"
+    config_data = {k: params[k] for k in ("keywords", "city", "salaryCode", "workYearCode", "eduLevel", "maxPages", "maxItems") if k in params and params[k] not in (None, "")}
+    config_data["scrapeOnly"] = True
+
+    if config_data:
+        await getjob_client.update_config(platform, config_data)
+
+    result = await getjob_client.start_task(platform)
+    if not result.get("success"):
+        if card_el:
+            card_el.props["status"] = "failed"
+            card_el.props["result_message"] = result.get("error", "启动失败")
+            await card_el.update()
+        return
+
+    if card_el:
+        card_el.props["status"] = "completed"
+        card_el.props["result_message"] = "爬取任务已启动！进度请看右侧面板 →"
+        await card_el.update()
+
+    task_monitor = cl.user_session.get("task_monitor")
+    if task_monitor:
+        task_id = f"{platform}-{int(_time.time())}"
+        db = cl.user_session.get("db")
+
+        async def _on_complete(p: str) -> dict:
+            from tools.getjob.platform_sync import SyncJobsTool
+            if not db:
+                return {}
+            return await SyncJobsTool().execute({"platform": p}, {"db": db, "getjob_client": getjob_client})
+
+        task_monitor.start_polling(
+            task_id=task_id, platform=platform, client=getjob_client,
+            on_complete=_on_complete,
+            agent_busy_check=lambda: cl.user_session.get("agent_busy", False),
+        )
+
+    await cl.send_window_message(_json.dumps({
+        "type": "task_panel_update",
+        "tasks": [{"task_id": f"{platform}-{int(_time.time())}", "name": "爬取岗位列表", "platform": platform, "status": "running", "progress_text": "启动中...", "elapsed_s": 0}],
+    }))
+
+
+async def _execute_fetch_detail(params: dict, job_ids: list, card_el):
+    """执行批量获取岗位详情"""
+    if not job_ids:
+        if card_el:
+            card_el.props["status"] = "failed"
+            card_el.props["result_message"] = "未选择岗位"
+            await card_el.update()
+        return
+
+    from tools.getjob.fetch_detail import FetchJobDetailTool
+    db = cl.user_session.get("db")
+    result = await FetchJobDetailTool().execute(
+        {"job_ids": job_ids, "force": params.get("force", False)},
+        {"db": db, "getjob_client": cl.user_session.get("getjob_client"), "job_rag": cl.user_session.get("job_rag")},
+    )
+    if card_el:
+        if result.get("success"):
+            card_el.props["status"] = "completed"
+            card_el.props["result_message"] = f"完成：获取 {result.get('fetched', 0)} 条，跳过 {result.get('skipped', 0)} 条"
+        else:
+            card_el.props["status"] = "failed"
+            card_el.props["result_message"] = result.get("error", "获取失败")
+        await card_el.update()
+
+
+async def _execute_deliver(params: dict, job_ids: list, card_el):
+    """执行投递打招呼"""
+    if not job_ids:
+        if card_el:
+            card_el.props["status"] = "failed"
+            card_el.props["result_message"] = "未选择岗位"
+            await card_el.update()
+        return
+
+    from tools.getjob.platform_deliver import PlatformDeliverTool
+    result = await PlatformDeliverTool().execute(
+        {"platform": "liepin", "job_ids": job_ids},
+        {"getjob_client": cl.user_session.get("getjob_client")},
+    )
+    if card_el:
+        if result.get("success"):
+            card_el.props["status"] = "completed"
+            card_el.props["result_message"] = "投递完成！"
+        else:
+            card_el.props["status"] = "failed"
+            card_el.props["result_message"] = result.get("error", "投递失败")
+        await card_el.update()
+
+
+@cl.action_callback("action_card_cancel")
+async def on_action_card_cancel(action: cl.Action):
+    """用户取消操作卡片"""
+    card_type = (action.payload or {}).get("card_type", "unknown")
+    card_el = cl.user_session.get(f"action_card_{card_type}")
+    if card_el:
+        card_el.props["status"] = "failed"
+        card_el.props["result_message"] = "已取消"
+        await card_el.update()
+
+
 async def _parse_file(file_path: str, file_name: str = "") -> str | None:
     """解析上传的文件，返回文本内容。支持 .md/.txt/.pdf/.doc/.docx"""
     from pathlib import Path as _P
@@ -617,6 +759,14 @@ async def handle_user_message(content: str):
                     current_step.output = "❌ 执行失败"
                 await current_step.__aexit__(None, None, None)
                 current_step = None
+
+        elif event.type == "action_card":
+            # AI 返回了操作卡片 — 渲染到对话流中
+            card_data = event.data
+            card_type = card_data.get("card_type", "unknown")
+            element = cl.CustomElement(name="ActionCard", props=card_data, display="inline")
+            cl.user_session.set(f"action_card_{card_type}", element)
+            await cl.Message(content="", elements=[element]).send()
 
         elif event.type == "error":
             error_text = event.data.get("message", "")
