@@ -1300,7 +1300,7 @@ async def api_ai_exposure():
     profile_text = "\n".join(profile_parts)
 
     occ_text = "\n".join(
-        f"- {o['title']} (曝光度: {o['exposure']:.2%})" for o in matched_occs
+        f"- {o.get('title_display', o['title'])} (曝光度: {o['exposure']:.2%})" for o in matched_occs
     )
 
     high_tasks = "\n".join(

@@ -196,7 +196,8 @@ function render(a) {
     h += `<div class="ai-card"><div class="ai-card-title">🎯 匹配的 O*NET 职业</div><div class="occ-list">`;
     a.matched_occupations.forEach(o => {
       const pct = Math.round(o.exposure * 100);
-      h += `<span class="occ-tag">${esc(o.title)}<span class="occ-exposure">${pct}%</span></span>`;
+      const name = o.title_display || o.title;
+      h += `<span class="occ-tag">${esc(name)}<span class="occ-exposure">${pct}%</span></span>`;
     });
     h += `</div></div>`;
   }
@@ -207,7 +208,7 @@ function render(a) {
     // 高渗透率任务
     if (td.high_penetration?.length) {
       h += `<div class="ai-card"><div class="ai-card-title">🔴 AI 渗透率最高的任务</div>`;
-      h += `<div style="font-size:11px;color:#999;margin-bottom:10px;">这些任务正在被 AI 大量渗透（共 ${td.total_tasks} 个任务，平均渗透率 ${Math.round(td.avg_penetration * 100)}%）</div>`;
+      h += `<div style="font-size:11px;color:#999;margin-bottom:10px;">这些任务正在被 AI 大量渗透（共 ${td.total_tasks} 个任务，平均渗透率 ${Math.round(td.avg_penetration * 100)}%）· 任务描述来自 O*NET 数据库（英文原文）</div>`;
       td.high_penetration.forEach(t => {
         const pct = Math.round(t.penetration * 100);
         const pcls = pct >= 70 ? 'task-pen-high' : pct >= 40 ? 'task-pen-mid' : 'task-pen-low';

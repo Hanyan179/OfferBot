@@ -14,6 +14,16 @@ _exposure: dict[str, dict] | None = None       # occ_code -> {title, exposure}
 _task_pen: dict[str, float] | None = None       # task_text -> penetration
 _occ_tasks: dict[str, list[str]] | None = None  # occ_code -> [task_text]
 _mapping: dict[str, list[str]] | None = None    # 中文岗位名 -> [occ_code]
+_titles_zh: dict[str, str] | None = None        # occ_code -> 中文职业名
+
+
+def _load_titles_zh() -> dict[str, str]:
+    global _titles_zh
+    if _titles_zh is not None:
+        return _titles_zh
+    p = _DIR / "occ_titles_zh.json"
+    _titles_zh = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+    return _titles_zh
 
 
 def _load_exposure() -> dict[str, dict]:
@@ -108,7 +118,9 @@ def match_occupation(user_role: str) -> list[dict]:
         seen.add(code)
         info = exposure.get(code)
         if info:
-            result.append({"occ_code": code, "title": info["title"], "exposure": info["exposure"]})
+            zh = _load_titles_zh().get(code, "")
+            title_display = f"{zh}（{info['title']}）" if zh else info["title"]
+            result.append({"occ_code": code, "title": info["title"], "title_zh": zh, "title_display": title_display, "exposure": info["exposure"]})
     return result
 
 
