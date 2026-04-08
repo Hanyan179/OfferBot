@@ -161,7 +161,9 @@ class QueryJobsTool(Tool):
         # 查数据
         sql = (
             f"SELECT id, title, company, salary_min, salary_max, city, url,"
-            f" CASE WHEN raw_jd IS NOT NULL AND raw_jd != '' THEN 1 ELSE 0 END as has_jd"
+            f" CASE WHEN raw_jd IS NOT NULL AND raw_jd != '' THEN 1 ELSE 0 END as has_jd,"
+            f" CASE WHEN match_detail IS NOT NULL AND match_detail != '' THEN 1 ELSE 0 END as has_analysis,"
+            f" CASE WHEN structured_jd IS NOT NULL AND structured_jd != '' THEN 1 ELSE 0 END as has_rag"
             f" FROM jobs{where} ORDER BY {order_by} LIMIT ?"
         )
         values_with_limit = list(values) + [limit]
@@ -182,6 +184,8 @@ class QueryJobsTool(Tool):
                 "city": r.get("city", ""),
                 "url": r.get("url", ""),
                 "has_jd": bool(r.get("has_jd")),
+                "has_analysis": bool(r.get("has_analysis")),
+                "has_rag": bool(r.get("has_rag")),
             })
 
         # ---- 构建 for_agent（极简摘要，不含具体岗位信息）----

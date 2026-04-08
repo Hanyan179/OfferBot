@@ -53,7 +53,7 @@ export default function JobList() {
               <TableHead>公司</TableHead>
               <TableHead>薪资</TableHead>
               <TableHead>城市</TableHead>
-              <TableHead className="w-10 text-center">JD</TableHead>
+              <TableHead className="w-16 text-center">状态</TableHead>
               <TableHead className="w-16 text-center">操作</TableHead>
             </TableRow>
           </TableHeader>
@@ -70,9 +70,26 @@ export default function JobList() {
                 <TableCell className="text-sm text-nowrap">{job.salary}</TableCell>
                 <TableCell className="text-sm text-nowrap">{job.city}</TableCell>
                 <TableCell className="text-center">
-                  {job.has_jd
-                    ? <Badge variant="default" className="text-[10px] px-1.5 py-0">有</Badge>
-                    : <Badge variant="outline" className="text-[10px] px-1.5 py-0">无</Badge>}
+                  <div className="flex items-center justify-center gap-0.5">
+                    <Tooltip>
+                      <TooltipTrigger>
+                        <span className={`text-xs ${job.has_jd ? 'opacity-100' : 'opacity-30'}`}>📄</span>
+                      </TooltipTrigger>
+                      <TooltipContent>{job.has_jd ? '已有JD' : '未爬取JD'}</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger>
+                        <span className={`text-xs ${job.has_analysis ? 'opacity-100' : 'opacity-30'}`}>🤖</span>
+                      </TooltipTrigger>
+                      <TooltipContent>{job.has_analysis ? '已AI分析' : '未分析'}</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger>
+                        <span className={`text-xs ${job.has_rag ? 'opacity-100' : 'opacity-30'}`}>🧠</span>
+                      </TooltipTrigger>
+                      <TooltipContent>{job.has_rag ? '已图谱化' : '未图谱化'}</TooltipContent>
+                    </Tooltip>
+                  </div>
                 </TableCell>
                 <TableCell className="text-center">
                   <div className="flex items-center justify-center gap-1">

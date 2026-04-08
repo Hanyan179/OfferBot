@@ -980,31 +980,35 @@ async def api_save_job_analysis(job_id: int, request: Request):
         return JSONResponse({"ok": False, "error": "该岗位暂无 JD 数据，请先获取详情"})
 
     # 2. 读用户简历（只取分析需要的字段）
-    from web.resume_service import ResumeService
-    rs = ResumeService(db)
-    profile = await rs.get_full_profile()
-    resume = profile.get("resume") or {}
+    resume_data = await _load_active_resume(db)
 
     resume_section = ""
-    if resume:
-        skills = ", ".join(resume.get("skills_flat") or [])
+    if resume_data.get("name"):
+        skills = ", ".join(resume_data.get("tech_stack") or [])
         work_exp = []
-        for w in (resume.get("work_experience") or [])[:3]:
-            work_exp.append(f"{w.get('role','')}@{w.get('company','')}({w.get('duration','')}): {', '.join(w.get('tech_stack',[]))}")
+        for w in (resume_data.get("work_experience") or [])[:3]:
+            ts = w.get("tech_stack", "")
+            if isinstance(ts, list):
+                ts = ", ".join(ts)
+            work_exp.append(f"{w.get('role','')}@{w.get('company','')}({w.get('duration','')}): {ts}")
         projects = []
-        for p in (resume.get("projects") or [])[:3]:
-            projects.append(f"{p.get('name','')}: {', '.join(p.get('tech_stack',[]))}")
+        for p in (resume_data.get("projects") or [])[:3]:
+            ts = p.get("tech_stack", "")
+            if isinstance(ts, list):
+                ts = ", ".join(ts)
+            projects.append(f"{p.get('name','')}: {ts}")
 
+        jp = resume_data.get("job_preferences") or {}
         resume_section = f"""
 候选人信息：
-- 学历：{resume.get('education_level','未知')}，{resume.get('education_major','')}，{resume.get('school','')}
-- 工作年限：{resume.get('years_of_experience','未知')}年
-- 当前职位：{resume.get('current_role','')}（{resume.get('current_company','')}）
+- 学历：{resume_data.get('education','未知')}，{resume_data.get('major','')}，{resume_data.get('school','')}
+- 工作年限：{resume_data.get('experience','未知')}
+- 当前职位：{resume_data.get('current_role','')}（{resume_data.get('current_company','')}）
 - 核心技能：{skills}
 - 工作经历：{'; '.join(work_exp)}
 - 项目经验：{'; '.join(projects)}
-- 期望薪资：{resume.get('salary_min','?')}-{resume.get('salary_max','?')}K
-- 期望城市：{', '.join(resume.get('target_cities') or [])}"""
+- 期望薪资：{jp.get('salary_min','?')}-{jp.get('salary_max','?')}K
+- 期望城市：{jp.get('target_cities','未知')}"""
 
     # 3. 读记忆画像（职业规划、求职目标、要点信息等软性维度）
     memory_section = ""
