@@ -141,17 +141,22 @@ MOCK_TASKS = [
 
 @cl.on_chat_start
 async def on_start():
+    # 创建持久的任务面板（display="side"，挂在欢迎消息上，始终可从侧边栏访问）
+    task_panel = cl.CustomElement(name="TaskPanel", props={"tasks": []}, display="side")
+    cl.user_session.set("task_panel", task_panel)
+
     await cl.Message(
         content=(
             "🧪 **ActionCard + TaskPanel 测试页面**\n\n"
             "操作卡片：\n"
             "- `start_task` / `fetch_detail` / `deliver` / `all`\n\n"
-            "任务面板：\n"
-            "- `tasks` — mock 数据\n"
-            "- `tasks_live` — 轮询真实 /api/tasks（需要主服务在 7860 运行）\n\n"
+            "任务面板（右侧）：\n"
+            "- `tasks` — 加载 mock 任务到右侧面板\n"
+            "- `tasks_live` — 轮询真实 /api/tasks\n\n"
             "模拟流程：\n"
-            "- `demo` — 完整流程：卡片确认 → 任务面板出现进度"
-        )
+            "- `demo` — 完整流程：卡片确认 → 右侧面板出现进度"
+        ),
+        elements=[task_panel],
     ).send()
 
 
@@ -174,15 +179,19 @@ async def on_message(message: cl.Message):
         return
 
     if text == "tasks":
-        element = cl.CustomElement(name="TaskPanel", props={"tasks": MOCK_TASKS}, display="inline")
-        cl.user_session.set("task_panel", element)
-        await cl.Message(content="当前任务状态：", elements=[element]).send()
+        panel = cl.user_session.get("task_panel")
+        if panel:
+            panel.props["tasks"] = MOCK_TASKS
+            await panel.update()
+        await cl.Message(content="✅ 已加载 mock 任务到右侧面板，点击右侧查看。").send()
         return
 
     if text == "tasks_live":
-        element = cl.CustomElement(name="TaskPanel", props={"tasks": [], "poll_url": "http://localhost:7860/api/tasks"}, display="inline")
-        cl.user_session.set("task_panel", element)
-        await cl.Message(content="任务面板（实时轮询）：", elements=[element]).send()
+        panel = cl.user_session.get("task_panel")
+        if panel:
+            panel.props["poll_url"] = "http://localhost:7860/api/tasks"
+            await panel.update()
+        await cl.Message(content="✅ 右侧面板已切换为实时轮询模式。").send()
         return
 
     if text == "demo":
@@ -193,18 +202,11 @@ async def on_message(message: cl.Message):
 
 
 async def _run_demo():
-    """模拟完整流程：显示爬取卡片 → 用户确认 → 任务面板出现进度 → 完成"""
-    # 1. 显示爬取卡片
+    """模拟完整流程：显示爬取卡片 → 用户确认 → 右侧面板出现进度 → 完成"""
     card = cl.CustomElement(name="ActionCard", props=MOCK_CARDS["start_task"], display="inline")
     cl.user_session.set("card_start_task", card)
     await cl.Message(content="AI 分析了你的需求，建议执行以下操作：", elements=[card]).send()
-
-    # 2. 同时显示空任务面板
-    panel = cl.CustomElement(name="TaskPanel", props={"tasks": []}, display="inline")
-    cl.user_session.set("task_panel", panel)
-    await cl.Message(content="任务面板：", elements=[panel]).send()
-
-    await cl.Message(content="💡 点击卡片上的「执行」按钮，任务面板会模拟显示进度。").send()
+    await cl.Message(content="💡 点击卡片上的「执行」按钮，右侧任务面板会显示进度。").send()
 
 
 @cl.action_callback("action_card_submit")
@@ -227,9 +229,10 @@ async def on_action_submit(action: cl.Action):
         card_el.props["status"] = "executing"
         await card_el.update()
 
-    # 模拟任务进度
+    # 模拟任务进度（更新右侧面板）
     panel_el = cl.user_session.get("task_panel")
     if panel_el:
+        existing = panel_el.props.get("tasks") or []
         task = {
             "task_id": f"{card_type}-demo",
             "name": {"start_task": "爬取岗位列表", "fetch_detail": f"爬取岗位详情（{len(job_ids)}条）", "deliver": f"投递打招呼（{len(job_ids)}条）"}.get(card_type, card_type),
@@ -238,22 +241,20 @@ async def on_action_submit(action: cl.Action):
             "progress_text": "0/100",
             "elapsed_s": 0,
         }
-        panel_el.props["tasks"] = [task] + (panel_el.props.get("tasks") or [])
+        panel_el.props["tasks"] = [task] + [t for t in existing if t["task_id"] != task["task_id"]]
         await panel_el.update()
 
-        # 模拟进度推进
         for i in range(1, 6):
             await asyncio.sleep(1)
             task["progress_text"] = f"{i * 20}/100"
             task["elapsed_s"] = i
-            panel_el.props["tasks"] = [task] + [t for t in (panel_el.props.get("tasks") or []) if t["task_id"] != task["task_id"]]
+            panel_el.props["tasks"] = [task] + [t for t in existing if t["task_id"] != task["task_id"]]
             await panel_el.update()
 
-        # 完成
         task["status"] = "completed"
         task["progress_text"] = "100/100"
         task["elapsed_s"] = 5
-        panel_el.props["tasks"] = [task] + [t for t in (panel_el.props.get("tasks") or []) if t["task_id"] != task["task_id"]]
+        panel_el.props["tasks"] = [task] + [t for t in existing if t["task_id"] != task["task_id"]]
         await panel_el.update()
 
     # 更新卡片为完成
