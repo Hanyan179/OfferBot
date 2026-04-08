@@ -112,7 +112,7 @@ html.dark .ai-text { color:#bbb; }
 <body>
 
 <div class="top-bar">
-  <a class="back-btn" onclick="history.back()">← 返回列表</a>
+  <a class="back-btn" id="backBtn" onclick="history.back()" style="display:none">← 返回列表</a>
 </div>
 
 <div class="main">
@@ -143,6 +143,11 @@ html.dark .ai-text { color:#bbb; }
 const API = window.parent?.location?.origin || location.origin;
 const jobId = location.pathname.split('/').pop();
 let jobData = null;
+
+// 只有从站内列表页跳过来时显示返回按钮（新标签页打开时 referrer 为空或来自对话页）
+if (document.referrer && document.referrer.includes('/page/jobs')) {
+  document.getElementById('backBtn').style.display = '';
+}
 
 async function load() {
   try {
