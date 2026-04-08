@@ -706,7 +706,7 @@ async def handle_user_message(content: str):
     # LLM 自己决定是纯回复、调工具、还是两者同时
     current_step: cl.Step | None = None
     assistant_text = ""
-    pending_elements: list[cl.CustomElement] = []  # 攒着，等 AI 回复后再发
+    pending_elements: list = []  # 攒着，等 AI 回复后再发
     db = cl.user_session.get("db")
 
     # --- 执行轨迹收集 ---
@@ -734,15 +734,15 @@ async def handle_user_message(content: str):
                     think_step.output = thinking_text
 
         elif event.type == "assistant_message":
-            # LLM 的文本回复 — 展示给用户，附带攒着的 UI 元素
+            # LLM 的文本回复
             text = event.data.get("content", "")
             if text:
                 assistant_text = text
-                if pending_elements:
-                    await cl.Message(content=text, elements=pending_elements).send()
-                    pending_elements = []
-                else:
-                    await cl.Message(content=text).send()
+                await cl.Message(content=text).send()
+                # 发完文字后，立刻发攒着的 UI 元素
+                for el in pending_elements:
+                    await cl.Message(content="", elements=[el]).send()
+                pending_elements = []
 
         elif event.type == "tool_start":
             tool_name = event.data.get("tool_name", "unknown")
@@ -759,7 +759,14 @@ async def handle_user_message(content: str):
 
             if current_step is not None:
                 if success:
-                    current_step.output = _format_tool_result(data)
+                    # 分流结果只在 Step 里显示 for_agent 摘要，不显示 for_ui 的完整数据
+                    step_data = data
+                    if isinstance(data, dict):
+                        for v in data.values():
+                            if isinstance(v, dict) and "for_agent" in v:
+                                step_data = {k: v.get("for_agent") for k, v in data.items() if isinstance(v, dict) and "for_agent" in v}
+                                break
+                    current_step.output = _format_tool_result(step_data)
                 else:
                     current_step.output = "❌ 执行失败"
                 await current_step.__aexit__(None, None, None)
