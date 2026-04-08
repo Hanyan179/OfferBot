@@ -306,12 +306,12 @@ async def on_chat_resume(thread):
                 "WHERE conversation_id = ? ORDER BY created_at ASC",
                 (conv_id,),
             )
+            logger.info("恢复 UI 元素: conv_id=%s, 找到 %d 条", conv_id, len(rows))
             for row in rows:
                 etype = row.get("element_type", "")
                 props = json.loads(row.get("props_json", "{}"))
                 element = cl.CustomElement(name=etype, props=props, display="inline")
                 await cl.Message(content="\u200b", elements=[element]).send()
-                # 恢复 session 状态
                 if etype == "JobList" and props.get("jobs"):
                     id_map = {}
                     for j in props["jobs"]:
@@ -319,31 +319,6 @@ async def on_chat_resume(thread):
                     cl.user_session.set("job_id_map", id_map)
                 elif etype == "ActionCard":
                     cl.user_session.set(f"action_card_{props.get('card_type','')}", element)
-        except Exception as e:
-            logger.warning("恢复 UI 元素失败: %s", e)
-
-    # ---- 恢复 UI 元素（从执行轨迹中找最近的 ui_render 事件）----
-    if conv_id and trace_store:
-        try:
-            traces = trace_store.load_traces(conv_id, limit=5)
-            last_ui_data = None
-            for trace in reversed(traces):
-                for evt in (trace.get("events") or []):
-                    if evt.get("type") == "ui_render":
-                        last_ui_data = evt.get("data", {})
-                if last_ui_data:
-                    break
-            if last_ui_data:
-                tool_name = last_ui_data.get("tool_name", "")
-                for_ui = last_ui_data.get("for_ui", {})
-                if tool_name == "query_jobs" and for_ui.get("jobs"):
-                    # 恢复 id_map
-                    id_map = {}
-                    for j in for_ui["jobs"]:
-                        id_map[j["seq"]] = {"id": j["id"], "title": j["title"], "company": j["company"]}
-                    cl.user_session.set("job_id_map", id_map)
-                    element = cl.CustomElement(name="JobList", props=for_ui, display="inline")
-                    await cl.Message(content="\u200b", elements=[element]).send()
         except Exception as e:
             logger.warning("恢复 UI 元素失败: %s", e)
 
