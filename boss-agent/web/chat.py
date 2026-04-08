@@ -706,6 +706,7 @@ async def handle_user_message(content: str):
     # LLM 自己决定是纯回复、调工具、还是两者同时
     current_step: cl.Step | None = None
     assistant_text = ""
+    pending_elements: list[cl.CustomElement] = []  # 攒着，等 AI 回复后再发
     db = cl.user_session.get("db")
 
     # --- 执行轨迹收集 ---
@@ -733,11 +734,15 @@ async def handle_user_message(content: str):
                     think_step.output = thinking_text
 
         elif event.type == "assistant_message":
-            # LLM 的文本回复 — 直接展示给用户
+            # LLM 的文本回复 — 展示给用户，附带攒着的 UI 元素
             text = event.data.get("content", "")
             if text:
                 assistant_text = text
-                await cl.Message(content=text).send()
+                if pending_elements:
+                    await cl.Message(content=text, elements=pending_elements).send()
+                    pending_elements = []
+                else:
+                    await cl.Message(content=text).send()
 
         elif event.type == "tool_start":
             tool_name = event.data.get("tool_name", "unknown")
@@ -761,31 +766,24 @@ async def handle_user_message(content: str):
                 current_step = None
 
         elif event.type == "action_card":
-            # AI 返回了操作卡片 — 渲染到对话流中
             card_data = event.data
             card_type = card_data.get("card_type", "unknown")
             element = cl.CustomElement(name="ActionCard", props=card_data, display="inline")
             cl.user_session.set(f"action_card_{card_type}", element)
-            await cl.Message(content="", elements=[element]).send()
+            pending_elements.append(element)
 
         elif event.type == "ui_render":
-            # Tool 结果分流 — 渲染 UI 组件，AI 只收到摘要
             tool_name = event.data.get("tool_name", "")
             for_ui = event.data.get("for_ui", {})
 
             if tool_name == "query_jobs" and for_ui.get("jobs"):
-                # 存 id_map 到 session（供后续 AI 定位岗位用）
                 id_map = {}
                 for j in for_ui["jobs"]:
                     id_map[j["seq"]] = {"id": j["id"], "title": j["title"], "company": j["company"]}
                 cl.user_session.set("job_id_map", id_map)
 
-                element = cl.CustomElement(
-                    name="JobList",
-                    props=for_ui,
-                    display="inline",
-                )
-                await cl.Message(content="", elements=[element]).send()
+                element = cl.CustomElement(name="JobList", props=for_ui, display="inline")
+                pending_elements.append(element)
 
         elif event.type == "error":
             error_text = event.data.get("message", "")
@@ -812,6 +810,11 @@ async def handle_user_message(content: str):
 
     # agent 处理完毕
     cl.user_session.set("agent_busy", False)
+
+    # 兜底：如果还有未发的 UI 元素（AI 没有文字回复的情况）
+    if pending_elements:
+        await cl.Message(content="", elements=pending_elements).send()
+        pending_elements = []
 
     # 记录 assistant 回复到历史
     if assistant_text:

@@ -61,7 +61,7 @@ class QueryJobsTool(Tool):
                     "enum": ["has_jd", "missing_jd", "stats"],
                     "description": "JD 状态过滤：has_jd=仅有JD的, missing_jd=缺JD的, stats=返回覆盖率统计",
                 },
-                "limit": {"type": "integer", "description": "返回数量上限", "default": 20},
+                "limit": {"type": "integer", "description": "返回数量上限", "default": 200},
             },
         }
 
@@ -131,7 +131,7 @@ class QueryJobsTool(Tool):
             clauses.append("(raw_jd IS NULL OR raw_jd = '')")
 
         where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
-        limit = min(params.get("limit", 20), 50)
+        limit = min(params.get("limit", 200), 500)
 
         # 先查总匹配数
         count_sql = f"SELECT COUNT(*) as cnt FROM jobs{where}"
