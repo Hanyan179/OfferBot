@@ -739,10 +739,10 @@ async def handle_user_message(content: str):
             if text:
                 assistant_text = text
                 await cl.Message(content=text).send()
-                # 发完文字后，立刻发攒着的 UI 元素
-                for el in pending_elements:
-                    await cl.Message(content="", elements=[el]).send()
-                pending_elements = []
+            # 不管有没有文字，都把攒着的 UI 元素发出去
+            for el in pending_elements:
+                await cl.Message(content="\u200b", elements=[el]).send()
+            pending_elements = []
 
         elif event.type == "tool_start":
             tool_name = event.data.get("tool_name", "unknown")
@@ -820,7 +820,8 @@ async def handle_user_message(content: str):
 
     # 兜底：如果还有未发的 UI 元素（AI 没有文字回复的情况）
     if pending_elements:
-        await cl.Message(content="", elements=pending_elements).send()
+        for el in pending_elements:
+            await cl.Message(content="\u200b", elements=[el]).send()
         pending_elements = []
 
     # 记录 assistant 回复到历史
