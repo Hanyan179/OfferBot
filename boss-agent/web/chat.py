@@ -51,6 +51,32 @@ PROVIDER_PRESETS = {
 }
 
 
+async def _save_ui_element(db, conv_id: str | None, element_type: str, props: dict):
+    """持久化 UI 元素到数据库，供对话恢复时重建。"""
+    if not db or not conv_id:
+        return
+    try:
+        await db.execute_write(
+            "CREATE TABLE IF NOT EXISTS ui_elements ("
+            "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "  conversation_id TEXT NOT NULL,"
+            "  element_type TEXT NOT NULL,"
+            "  props_json TEXT NOT NULL,"
+            "  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+            ")"
+        )
+        await db.execute_write(
+            "DELETE FROM ui_elements WHERE conversation_id = ? AND element_type = ?",
+            (conv_id, element_type),
+        )
+        await db.execute_write(
+            "INSERT INTO ui_elements (conversation_id, element_type, props_json) VALUES (?, ?, ?)",
+            (conv_id, element_type, json.dumps(props, ensure_ascii=False, default=str)),
+        )
+    except Exception as e:
+        logger.warning("持久化 UI 元素失败: %s", e)
+
+
 async def _ensure_agent_ready(db: Database, config) -> bool:
     """确保 Agent 已初始化。配置变了则重新初始化。"""
     llm_config = await _load_llm_config(db)
@@ -275,25 +301,27 @@ async def on_chat_resume(thread):
     # ---- 恢复最近的 JobList ----
     if has_history and db:
         try:
-            # 检查对话历史中是否有搜索岗位相关的用户消息
-            search_keywords = ["岗位", "搜索", "找工作", "查找", "AI", "薪资", "工资", "K"]
-            has_search = any(
-                msg.get("role") == "user" and any(kw in msg.get("content", "") for kw in search_keywords)
-                for msg in (restored or [])
+            # 从 ui_elements 表恢复（我们自己持久化的）
+            rows = await db.execute(
+                "SELECT element_type, props_json FROM ui_elements "
+                "WHERE conversation_id = ? ORDER BY created_at DESC LIMIT 5",
+                (conv_id,),
             )
-            if has_search:
-                from tools.data.query_jobs import QueryJobsTool
-                result = await QueryJobsTool().execute({"limit": 50}, {"db": db})
-                for_ui = result.get("for_ui", {})
-                if for_ui.get("jobs"):
+            for row in rows:
+                etype = row.get("element_type", "")
+                props = json.loads(row.get("props_json", "{}"))
+                if etype == "JobList" and props.get("jobs"):
                     id_map = {}
-                    for j in for_ui["jobs"]:
+                    for j in props["jobs"]:
                         id_map[j["seq"]] = {"id": j["id"], "title": j["title"], "company": j["company"]}
                     cl.user_session.set("job_id_map", id_map)
-                    element = cl.CustomElement(name="JobList", props=for_ui, display="inline")
-                    await cl.Message(content="📋 上次的岗位列表：", elements=[element]).send()
+                    element = cl.CustomElement(name="JobList", props=props, display="inline")
+                    await cl.Message(content="\u200b", elements=[element]).send()
+                elif etype == "ActionCard":
+                    element = cl.CustomElement(name="ActionCard", props=props, display="inline")
+                    await cl.Message(content="\u200b", elements=[element]).send()
         except Exception as e:
-            logger.warning("恢复 JobList 失败: %s", e)
+            logger.warning("恢复 UI 元素失败: %s", e)
 
     # ---- 恢复 UI 元素（从执行轨迹中找最近的 ui_render 事件）----
     if conv_id and trace_store:
@@ -825,6 +853,8 @@ async def handle_user_message(content: str):
             element = cl.CustomElement(name="ActionCard", props=card_data, display="inline")
             cl.user_session.set(f"action_card_{card_type}", element)
             pending_elements.append(element)
+            # 持久化
+            await _save_ui_element(db, conv_id, "ActionCard", card_data)
 
         elif event.type == "ui_render":
             tool_name = event.data.get("tool_name", "")
@@ -838,6 +868,8 @@ async def handle_user_message(content: str):
 
                 element = cl.CustomElement(name="JobList", props=for_ui, display="inline")
                 pending_elements.append(element)
+                # 持久化
+                await _save_ui_element(db, conv_id, "JobList", for_ui)
 
         elif event.type == "error":
             error_text = event.data.get("message", "")
