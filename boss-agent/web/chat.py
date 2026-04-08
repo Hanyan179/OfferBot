@@ -298,28 +298,27 @@ async def on_chat_resume(thread):
                 )
             await cl.Message(content=welcome).send()
 
-    # ---- 恢复最近的 JobList ----
-    if has_history and db:
+    # ---- 恢复 UI 元素 ----
+    if conv_id and db:
         try:
-            # 从 ui_elements 表恢复（我们自己持久化的）
             rows = await db.execute(
                 "SELECT element_type, props_json FROM ui_elements "
-                "WHERE conversation_id = ? ORDER BY created_at DESC LIMIT 5",
+                "WHERE conversation_id = ? ORDER BY created_at ASC",
                 (conv_id,),
             )
             for row in rows:
                 etype = row.get("element_type", "")
                 props = json.loads(row.get("props_json", "{}"))
+                element = cl.CustomElement(name=etype, props=props, display="inline")
+                await cl.Message(content="\u200b", elements=[element]).send()
+                # 恢复 session 状态
                 if etype == "JobList" and props.get("jobs"):
                     id_map = {}
                     for j in props["jobs"]:
                         id_map[j["seq"]] = {"id": j["id"], "title": j["title"], "company": j["company"]}
                     cl.user_session.set("job_id_map", id_map)
-                    element = cl.CustomElement(name="JobList", props=props, display="inline")
-                    await cl.Message(content="\u200b", elements=[element]).send()
                 elif etype == "ActionCard":
-                    element = cl.CustomElement(name="ActionCard", props=props, display="inline")
-                    await cl.Message(content="\u200b", elements=[element]).send()
+                    cl.user_session.set(f"action_card_{props.get('card_type','')}", element)
         except Exception as e:
             logger.warning("恢复 UI 元素失败: %s", e)
 
