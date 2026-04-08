@@ -215,10 +215,7 @@ async def on_chat_resume(thread):
 
     # 同步 .active 标记
     if conv_id:
-        try:
-            chat_store.set_active_conversation(conv_id)
-        except AttributeError:
-            pass
+        chat_store.set_active_conversation(conv_id)
 
     # 从 JSONL 恢复对话历史到内存
     restored = []
