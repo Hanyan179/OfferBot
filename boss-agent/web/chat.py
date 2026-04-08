@@ -215,7 +215,10 @@ async def on_chat_resume(thread):
 
     # 同步 .active 标记
     if conv_id:
-        pass  # TODO: set_active_conversation not implemented yet
+        try:
+            chat_store.set_active_conversation(conv_id)
+        except AttributeError:
+            pass
 
     # 从 JSONL 恢复对话历史到内存
     restored = []
@@ -388,7 +391,7 @@ async def on_chat_start():
         conv_path = chat_store._conversation_path(conv_id)
         conv_path.parent.mkdir(parents=True, exist_ok=True)
         conv_path.touch(exist_ok=True)
-        # chat_store.set_active_conversation(conv_id)  # method does not exist
+        chat_store.set_active_conversation(conv_id)
     else:
         conv_id = await chat_store.get_active_conversation_id()
         if not conv_id:
