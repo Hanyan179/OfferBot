@@ -1,6 +1,11 @@
 <div class="page-header">
-  <h1>🧠 用户画像</h1>
-  <p>简历数据 + AI 从对话中自动提取的认知模型。</p>
+  <div style="display:flex;justify-content:space-between;align-items:center;">
+    <div>
+      <h1>🧠 用户画像</h1>
+      <p>简历数据 + AI 从对话中自动提取的认知模型。</p>
+    </div>
+    <a class="btn btn-ai-exposure" href="/analysis/ai-exposure" target="_top">🤖 AI 替代性分析</a>
+  </div>
 </div>
 
 <!-- ===== 简历概要 ===== -->
@@ -343,6 +348,9 @@ html.dark .card ul li { color: #bbb; }
 
 /* 按钮基础（embed_wrap 没有 btn 样式，需自带） */
 .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 10px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; transition: all .15s; text-decoration: none; }
+.btn-ai-exposure { background: rgba(255,215,0,0.12); color: #b8860b; border: 1px solid rgba(255,215,0,0.3); padding: 10px 20px; font-size: 14px; font-weight: 600; white-space: nowrap; }
+.btn-ai-exposure:hover { background: rgba(255,215,0,0.25); }
+html.dark .btn-ai-exposure { color: #FFD700; }
 
 /* 编辑模式切换 — 必须在 .btn 之后，确保 display:none 优先级更高 */
 .resume-toolbar { display: flex; gap: 6px; }

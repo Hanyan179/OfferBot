@@ -146,11 +146,12 @@ async def _init_agent(db: Database, api_key: str, base_url: str, model: str) -> 
         cl.user_session.set("registry", components["registry"])
 
         # LightRAG 初始化（异步）
-        job_rag = components["job_rag"]
-        try:
-            await job_rag.initialize()
-        except Exception as e:
-            logger.warning("JobRAG 初始化失败: %s", e)
+        job_rag = components.get("job_rag")
+        if job_rag:
+            try:
+                await job_rag.initialize()
+            except Exception as e:
+                logger.warning("JobRAG 初始化失败: %s", e)
         cl.user_session.set("job_rag", job_rag)
 
         cl.user_session.set("agent_ready", True)

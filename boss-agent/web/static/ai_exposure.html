@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 替代性分析</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#f5f5f7; color:#1d1d1f; font-family:-apple-system,BlinkMacSystemFont,sans-serif; transition:background .2s,color .2s; }
+html.dark body { background:#0f0f1a; color:#e0e0e0; }
+
+.top-bar { padding:12px 20px; border-bottom:1px solid rgba(0,0,0,0.08); }
+html.dark .top-bar { border-bottom-color:rgba(255,255,255,0.06); }
+.back-btn { color:#4D96FF; text-decoration:none; font-size:13px; cursor:pointer; }
+.back-btn:hover { text-decoration:underline; }
+
+.main { padding:20px; max-width:860px; margin:0 auto; }
+.page-title { font-size:22px; font-weight:700; margin-bottom:4px; }
+.page-subtitle { font-size:13px; color:#888; margin-bottom:12px; line-height:1.5; }
+html.dark .page-subtitle { color:#999; }
+
+/* 数据来源声明 */
+.data-notice { font-size:11px; color:#999; margin-bottom:24px; padding:10px 14px; background:rgba(255,193,7,0.06); border:1px solid rgba(255,193,7,0.15); border-radius:8px; line-height:1.6; }
+html.dark .data-notice { background:rgba(255,193,7,0.04); border-color:rgba(255,193,7,0.1); }
+.data-notice a { color:#4D96FF; text-decoration:none; }
+.data-notice a:hover { text-decoration:underline; }
+
+/* 加载 & 错误 */
+.loading { text-align:center; padding:60px 20px; color:#666; }
+.loading-spinner { display:inline-block; width:32px; height:32px; border:3px solid rgba(0,0,0,0.1); border-top-color:#4D96FF; border-radius:50%; animation:spin 0.8s linear infinite; margin-bottom:12px; }
+@keyframes spin { to { transform:rotate(360deg); } }
+.error { color:#FF6B6B; font-size:14px; padding:40px 20px; text-align:center; }
+.retry-btn { margin-top:12px; padding:8px 20px; border-radius:8px; border:1px solid rgba(255,107,107,0.3); background:rgba(255,107,107,0.1); color:#FF6B6B; cursor:pointer; font-size:13px; }
+
+/* 总分 */
+.score-banner { display:flex; align-items:center; gap:20px; padding:20px; border-radius:12px; margin-bottom:16px; background:rgba(0,0,0,0.02); border:1px solid rgba(0,0,0,0.08); }
+html.dark .score-banner { background:rgba(255,255,255,0.03); border-color:rgba(255,255,255,0.08); }
+.score-ring { width:80px; height:80px; border-radius:50%; display:flex; flex-direction:column; align-items:center; justify-content:center; flex-shrink:0; }
+.score-ring .score-num { font-size:22px; font-weight:700; }
+.score-ring .score-label { font-size:10px; margin-top:2px; }
+.score-low { background:rgba(107,203,119,0.15); color:#6BCB77; border:3px solid rgba(107,203,119,0.5); }
+.score-mid { background:rgba(255,193,7,0.15); color:#FFC107; border:3px solid rgba(255,193,7,0.5); }
+.score-high { background:rgba(255,107,107,0.15); color:#FF6B6B; border:3px solid rgba(255,107,107,0.5); }
+.score-info { flex:1; }
+.score-verdict { font-size:16px; font-weight:600; margin-bottom:4px; }
+.score-summary { font-size:13px; color:#666; line-height:1.6; }
+html.dark .score-summary { color:#aaa; }
+
+/* 卡片 */
+.ai-card { background:rgba(0,0,0,0.02); border:1px solid rgba(0,0,0,0.08); border-radius:12px; padding:16px; margin-bottom:12px; }
+html.dark .ai-card { background:rgba(255,255,255,0.03); border-color:rgba(255,255,255,0.08); }
+.ai-card-title { font-size:14px; font-weight:600; margin-bottom:12px; display:flex; align-items:center; gap:6px; }
+
+/* 匹配职业 */
+.occ-list { display:flex; flex-wrap:wrap; gap:8px; }
+.occ-tag { padding:6px 14px; border-radius:20px; font-size:12px; background:rgba(77,150,255,0.08); color:#4D96FF; border:1px solid rgba(77,150,255,0.15); }
+.occ-exposure { font-weight:600; margin-left:6px; }
+
+/* 任务列表 */
+.task-item { display:flex; align-items:baseline; gap:10px; padding:6px 0; font-size:13px; line-height:1.5; }
+.task-item + .task-item { border-top:1px solid rgba(0,0,0,0.03); }
+html.dark .task-item + .task-item { border-top-color:rgba(255,255,255,0.03); }
+.task-pen { font-weight:600; flex-shrink:0; width:42px; text-align:right; }
+.task-pen-high { color:#FF6B6B; }
+.task-pen-mid { color:#FFC107; }
+.task-pen-low { color:#6BCB77; }
+.task-text { color:#444; }
+html.dark .task-text { color:#bbb; }
+
+/* 维度评分 */
+.dim-row { display:flex; align-items:center; gap:12px; margin-bottom:10px; }
+.dim-label { width:80px; font-size:12px; color:#888; text-align:right; flex-shrink:0; }
+.dim-bar { flex:1; height:8px; border-radius:4px; background:rgba(0,0,0,0.06); overflow:hidden; }
+html.dark .dim-bar { background:rgba(255,255,255,0.06); }
+.dim-fill { height:100%; border-radius:4px; transition:width 0.6s ease; }
+.dim-fill-green { background:#6BCB77; }
+.dim-fill-yellow { background:#FFC107; }
+.dim-fill-red { background:#FF6B6B; }
+.dim-score { width:36px; font-size:13px; font-weight:600; text-align:right; }
+.dim-desc { font-size:12px; color:#888; margin:-4px 0 10px 92px; line-height:1.5; }
+html.dark .dim-desc { color:#777; }
+
+/* 列表文本 */
+.ai-text { font-size:13px; line-height:1.7; color:#444; }
+html.dark .ai-text { color:#bbb; }
+.ai-text li { margin-bottom:6px; }
+.card-summary { font-size:13px; color:#666; margin-bottom:10px; line-height:1.6; }
+html.dark .card-summary { color:#999; }
+
+/* 建议 */
+.suggestion-item { display:flex; gap:10px; padding:10px 0; border-bottom:1px solid rgba(0,0,0,0.04); font-size:13px; line-height:1.6; }
+html.dark .suggestion-item { border-bottom-color:rgba(255,255,255,0.04); }
+.suggestion-item:last-child { border-bottom:none; }
+.suggestion-num { color:#4D96FF; font-weight:600; flex-shrink:0; }
+
+/* 无匹配 */
+.no-match { text-align:center; padding:40px 20px; }
+.no-match-icon { font-size:48px; margin-bottom:12px; }
+.no-match-text { font-size:14px; color:#666; line-height:1.6; }
+html.dark .no-match-text { color:#999; }
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <a class="back-btn" onclick="history.back()">← 返回画像</a>
+</div>
+
+<div class="main">
+  <div class="page-title">🤖 AI 替代性分析</div>
+  <div class="page-subtitle">基于你的技能画像，分析 AI 对你职业的影响：哪些能力会被增强，哪些面临替代风险，以及如何应对。</div>
+  <div class="data-notice">
+    ⚠️ 数据说明：分析基于 <a href="https://huggingface.co/datasets/Anthropic/EconomicIndex" target="_blank">Anthropic Economic Index</a> 的
+    <a href="https://www.anthropic.com/research/anthropic-economic-index-january-2026-report" target="_blank">研究报告</a>，
+    职业分类采用美国 <a href="https://www.onetcenter.org/database.html" target="_blank">O*NET</a> 标准。
+    该数据反映的是<strong>美国劳动力市场</strong>中 AI 对各职业的渗透情况，与中国市场可能存在差异，仅供参考。
+  </div>
+
+  <div id="loading" class="loading">
+    <div class="loading-spinner"></div>
+    <div>正在分析你的职业 AI 曝光度...<br><span style="font-size:11px;color:#999;">通常需要 15-30 秒</span></div>
+  </div>
+  <div id="error" class="error" style="display:none;"></div>
+  <div id="result" style="display:none;"></div>
+</div>
+
+<script>
+const API = window.location.origin;
+
+async function analyze() {
+  const loadEl = document.getElementById('loading');
+  const errEl = document.getElementById('error');
+  const resEl = document.getElementById('result');
+
+  try {
+    const resp = await fetch(`${API}/api/analysis/ai-exposure`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: '{}',
+      signal: AbortSignal.timeout(120000),
+    });
+    const data = await resp.json();
+    loadEl.style.display = 'none';
+
+    if (!data.ok) {
+      errEl.style.display = 'block';
+      errEl.innerHTML = `${esc(data.error)}<br><button class="retry-btn" onclick="location.reload()">重试</button>`;
+      return;
+    }
+
+    resEl.style.display = 'block';
+    if (data.analysis.no_match) {
+      renderNoMatch(data.analysis);
+    } else {
+      render(data.analysis);
+    }
+  } catch(e) {
+    loadEl.style.display = 'none';
+    errEl.style.display = 'block';
+    errEl.innerHTML = `分析失败: ${esc(e.message)}<br><button class="retry-btn" onclick="location.reload()">重试</button>`;
+  }
+}
+
+function renderNoMatch(a) {
+  document.getElementById('result').innerHTML = `
+    <div class="no-match">
+      <div class="no-match-icon">🔍</div>
+      <div class="no-match-text">
+        ${esc(a.message)}<br><br>
+        你的岗位关键词：${(a.query_terms || []).map(t => `<strong>${esc(t)}</strong>`).join('、') || '无'}
+      </div>
+    </div>`;
+}
+
+function render(a) {
+  const el = document.getElementById('result');
+  const exposure = Math.round((a.overall_exposure || 0) * 100);
+  const cls = exposure >= 50 ? 'score-high' : exposure >= 25 ? 'score-mid' : 'score-low';
+  const level = exposure >= 50 ? '高' : exposure >= 25 ? '中等' : '低';
+  let h = '';
+
+  // 总分
+  h += `<div class="score-banner">
+    <div class="score-ring ${cls}">
+      <span class="score-num">${exposure}%</span>
+      <span class="score-label">AI 曝光度</span>
+    </div>
+    <div class="score-info">
+      <div class="score-verdict">${esc(a.verdict || '')}</div>
+      <div class="score-summary">${esc(a.summary || '')}</div>
+    </div>
+  </div>`;
+
+  // 匹配职业（确定性数据）
+  if (a.matched_occupations?.length) {
+    h += `<div class="ai-card"><div class="ai-card-title">🎯 匹配的 O*NET 职业</div><div class="occ-list">`;
+    a.matched_occupations.forEach(o => {
+      const pct = Math.round(o.exposure * 100);
+      h += `<span class="occ-tag">${esc(o.title)}<span class="occ-exposure">${pct}%</span></span>`;
+    });
+    h += `</div></div>`;
+  }
+
+  // 任务级数据（确定性数据）
+  const td = a.task_data;
+  if (td) {
+    // 高渗透率任务
+    if (td.high_penetration?.length) {
+      h += `<div class="ai-card"><div class="ai-card-title">🔴 AI 渗透率最高的任务</div>`;
+      h += `<div style="font-size:11px;color:#999;margin-bottom:10px;">这些任务正在被 AI 大量渗透（共 ${td.total_tasks} 个任务，平均渗透率 ${Math.round(td.avg_penetration * 100)}%）</div>`;
+      td.high_penetration.forEach(t => {
+        const pct = Math.round(t.penetration * 100);
+        const pcls = pct >= 70 ? 'task-pen-high' : pct >= 40 ? 'task-pen-mid' : 'task-pen-low';
+        h += `<div class="task-item"><span class="task-pen ${pcls}">${pct}%</span><span class="task-text">${esc(t.task)}</span></div>`;
+      });
+      h += `</div>`;
+    }
+    // 低渗透率任务
+    if (td.low_penetration?.length) {
+      h += `<div class="ai-card"><div class="ai-card-title">🟢 AI 难以替代的任务</div>`;
+      td.low_penetration.forEach(t => {
+        const pct = Math.round(t.penetration * 100);
+        h += `<div class="task-item"><span class="task-pen task-pen-low">${pct}%</span><span class="task-text">${esc(t.task)}</span></div>`;
+      });
+      h += `</div>`;
+    }
+  }
+
+  // 四维评分（AI 解读）
+  if (a.dimensions?.length) {
+    h += `<div class="ai-card"><div class="ai-card-title">📊 多维评估 <span style="font-size:11px;color:#999;font-weight:400;">（AI 解读）</span></div>`;
+    a.dimensions.forEach(d => {
+      const isRisk = d.name === '替代风险' || d.name === '自动化程度';
+      const fillCls = isRisk
+        ? (d.score >= 60 ? 'dim-fill-red' : d.score >= 35 ? 'dim-fill-yellow' : 'dim-fill-green')
+        : (d.score >= 60 ? 'dim-fill-green' : d.score >= 35 ? 'dim-fill-yellow' : 'dim-fill-red');
+      h += `<div class="dim-row">
+        <span class="dim-label">${esc(d.name)}</span>
+        <div class="dim-bar"><div class="dim-fill ${fillCls}" style="width:${d.score}%"></div></div>
+        <span class="dim-score">${d.score}</span>
+      </div>`;
+      if (d.description) h += `<div class="dim-desc">${esc(d.description)}</div>`;
+    });
+    h += `</div>`;
+  }
+
+  // 三列卡片（AI 解读）
+  const cards = [
+    { key: 'augmentation', icon: '💪', title: '增强机会' },
+    { key: 'automation_risk', icon: '⚠️', title: '替代风险' },
+    { key: 'skill_transition', icon: '🔄', title: '技能转型建议' },
+  ];
+  const validCards = cards.filter(c => a[c.key]);
+  if (validCards.length) {
+    h += `<div style="display:grid;grid-template-columns:repeat(${validCards.length},1fr);gap:12px;">`;
+    validCards.forEach(c => {
+      const section = a[c.key];
+      h += `<div class="ai-card"><div class="ai-card-title">${c.icon} ${c.title}</div><div class="ai-text">`;
+      if (section.summary) h += `<div class="card-summary">${esc(section.summary)}</div>`;
+      if (section.items?.length) {
+        h += `<ul>`;
+        section.items.forEach(item => { h += `<li>${esc(item)}</li>`; });
+        h += `</ul>`;
+      }
+      h += `</div></div>`;
+    });
+    h += `</div>`;
+  }
+
+  // 综合建议
+  if (a.suggestions?.length) {
+    h += `<div class="ai-card"><div class="ai-card-title">💡 行动建议</div>`;
+    a.suggestions.forEach((s, i) => {
+      h += `<div class="suggestion-item"><span class="suggestion-num">${i+1}.</span><span>${esc(s)}</span></div>`;
+    });
+    h += `</div>`;
+  }
+
+  el.innerHTML = h;
+}
+
+function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+window.addEventListener('message', (e) => {
+  if (e.data?.type === 'themeChange') document.documentElement.classList.toggle('dark', e.data.dark);
+});
+
+analyze();
+</script>
+</body>
+</html>
