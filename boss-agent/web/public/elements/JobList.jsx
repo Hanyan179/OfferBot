@@ -1,10 +1,11 @@
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card"
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Separator } from "@/components/ui/separator"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import React, { useState, useMemo } from 'react'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ExternalLink, FileSearch } from 'lucide-react'
 
 const PAGE_SIZE = 10
 
@@ -40,9 +41,7 @@ export default function JobList() {
           </div>
         </div>
         {total > showing && (
-          <CardDescription className="text-xs">
-            共匹配 {total} 条，当前展示 {showing} 条
-          </CardDescription>
+          <CardDescription className="text-xs">共匹配 {total} 条，当前展示 {showing} 条</CardDescription>
         )}
       </CardHeader>
       <CardContent className="pt-0">
@@ -55,6 +54,7 @@ export default function JobList() {
               <TableHead>薪资</TableHead>
               <TableHead>城市</TableHead>
               <TableHead className="w-10 text-center">JD</TableHead>
+              <TableHead className="w-16 text-center">操作</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -62,9 +62,9 @@ export default function JobList() {
               <TableRow key={job.id}>
                 <TableCell className="text-center text-xs text-muted-foreground">{job.seq}</TableCell>
                 <TableCell className="text-sm font-medium">
-                  {job.url
-                    ? <a href={job.url} target="_blank" rel="noopener" className="text-primary hover:underline">{job.title}</a>
-                    : job.title}
+                  <a href={`/job/${job.id}`} target="_blank" rel="noopener" className="text-primary hover:underline">
+                    {job.title}
+                  </a>
                 </TableCell>
                 <TableCell className="text-sm">{job.company}</TableCell>
                 <TableCell className="text-sm text-nowrap">{job.salary}</TableCell>
@@ -74,6 +74,30 @@ export default function JobList() {
                     ? <Badge variant="default" className="text-[10px] px-1.5 py-0">有</Badge>
                     : <Badge variant="outline" className="text-[10px] px-1.5 py-0">无</Badge>}
                 </TableCell>
+                <TableCell className="text-center">
+                  <div className="flex items-center justify-center gap-1">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <a href={`/job/${job.id}`} target="_blank" rel="noopener"
+                           className="inline-flex items-center justify-center h-6 w-6 rounded hover:bg-accent">
+                          <FileSearch className="h-3.5 w-3.5 text-muted-foreground" />
+                        </a>
+                      </TooltipTrigger>
+                      <TooltipContent>智能分析</TooltipContent>
+                    </Tooltip>
+                    {job.url && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <a href={job.url} target="_blank" rel="noopener"
+                             className="inline-flex items-center justify-center h-6 w-6 rounded hover:bg-accent">
+                            <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+                          </a>
+                        </TooltipTrigger>
+                        <TooltipContent>查看猎聘原文</TooltipContent>
+                      </Tooltip>
+                    )}
+                  </div>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -81,9 +105,7 @@ export default function JobList() {
 
         {totalPages > 1 && (
           <div className="flex items-center justify-between mt-3">
-            <span className="text-xs text-muted-foreground">
-              第 {page + 1}/{totalPages} 页
-            </span>
+            <span className="text-xs text-muted-foreground">第 {page + 1}/{totalPages} 页</span>
             <div className="flex gap-1">
               <Button variant="outline" size="sm" className="h-7 px-2" disabled={page === 0} onClick={() => setPage(p => p - 1)}>
                 <ChevronLeft className="h-3.5 w-3.5" />
