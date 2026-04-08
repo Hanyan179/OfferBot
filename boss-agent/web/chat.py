@@ -65,9 +65,16 @@ async def _save_ui_element(db, conv_id: str | None, element_type: str, props: di
             "  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
             ")"
         )
+        # 去重 key：element_type + card_type（如果有）
+        # ActionCard 按 card_type 区分，其他组件按 element_type 整体替换
+        dedup_key = element_type
+        card_type = props.get("card_type")
+        if card_type:
+            dedup_key = f"{element_type}:{card_type}"
         await db.execute_write(
-            "DELETE FROM ui_elements WHERE conversation_id = ? AND element_type = ?",
-            (conv_id, element_type),
+            "DELETE FROM ui_elements WHERE conversation_id = ? AND element_type = ? "
+            "AND COALESCE(json_extract(props_json, '$.card_type'), '') = ?",
+            (conv_id, element_type, card_type or ""),
         )
         await db.execute_write(
             "INSERT INTO ui_elements (conversation_id, element_type, props_json) VALUES (?, ?, ?)",
@@ -301,28 +308,38 @@ async def on_chat_resume(thread):
             await cl.Message(content=welcome).send()
 
     # ---- 恢复 UI 元素 ----
+    # 注意：on_chat_resume 之后 Chainlit 会发 resume_thread 事件，
+    # 前端收到后用纯文本 steps 执行 setMessages() 覆盖所有消息。
+    # 所以这里的 UI 元素必须延迟发送，等 resume_thread 处理完。
     if conv_id and db:
-        try:
-            rows = await db.execute(
-                "SELECT element_type, props_json FROM ui_elements "
-                "WHERE conversation_id = ? ORDER BY created_at ASC",
-                (conv_id,),
-            )
-            logger.info("恢复 UI 元素: conv_id=%s, 找到 %d 条", conv_id, len(rows))
-            for row in rows:
-                etype = row.get("element_type", "")
-                props = json.loads(row.get("props_json", "{}"))
-                element = cl.CustomElement(name=etype, props=props, display="inline")
-                await cl.Message(content="\u200b", elements=[element]).send()
-                if etype == "JobList" and props.get("jobs"):
-                    id_map = {}
-                    for j in props["jobs"]:
-                        id_map[j["seq"]] = {"id": j["id"], "title": j["title"], "company": j["company"]}
-                    cl.user_session.set("job_id_map", id_map)
-                elif etype == "ActionCard":
-                    cl.user_session.set(f"action_card_{props.get('card_type','')}", element)
-        except Exception as e:
-            logger.warning("恢复 UI 元素失败: %s", e)
+        _db_ref = db
+        _conv_id_ref = conv_id
+
+        async def _restore_ui_elements():
+            await asyncio.sleep(1)  # 等 resume_thread 事件处理完
+            try:
+                rows = await _db_ref.execute(
+                    "SELECT element_type, props_json FROM ui_elements "
+                    "WHERE conversation_id = ? ORDER BY created_at ASC",
+                    (_conv_id_ref,),
+                )
+                logger.info("恢复 UI 元素: conv_id=%s, 找到 %d 条", _conv_id_ref, len(rows))
+                for row in rows:
+                    etype = row.get("element_type", "")
+                    props = json.loads(row.get("props_json", "{}"))
+                    element = cl.CustomElement(name=etype, props=props, display="inline")
+                    await cl.Message(content="\u200b", elements=[element]).send()
+                    if etype == "JobList" and props.get("jobs"):
+                        id_map = {}
+                        for j in props["jobs"]:
+                            id_map[j["seq"]] = {"id": j["id"], "title": j["title"], "company": j["company"]}
+                        cl.user_session.set("job_id_map", id_map)
+                    elif etype == "ActionCard":
+                        cl.user_session.set(f"action_card_{props.get('card_type','')}", element)
+            except Exception as e:
+                logger.warning("恢复 UI 元素失败: %s", e)
+
+        asyncio.create_task(_restore_ui_elements())
 
 
 @cl.on_chat_start
@@ -808,19 +825,18 @@ async def handle_user_message(content: str):
             await _save_ui_element(db, conv_id, "ActionCard", card_data)
 
         elif event.type == "ui_render":
-            tool_name = event.data.get("tool_name", "")
             for_ui = event.data.get("for_ui", {})
-
-            if tool_name == "query_jobs" and for_ui.get("jobs"):
-                id_map = {}
-                for j in for_ui["jobs"]:
-                    id_map[j["seq"]] = {"id": j["id"], "title": j["title"], "company": j["company"]}
-                cl.user_session.set("job_id_map", id_map)
-
-                element = cl.CustomElement(name="JobList", props=for_ui, display="inline")
+            element_name = for_ui.pop("element_name", None)
+            if element_name:
+                element = cl.CustomElement(name=element_name, props=for_ui, display="inline")
                 pending_elements.append(element)
-                # 持久化
-                await _save_ui_element(db, conv_id, "JobList", for_ui)
+                await _save_ui_element(db, conv_id, element_name, for_ui)
+                # JobList 特殊处理：维护序号→ID 映射供后续对话引用
+                if element_name == "JobList" and for_ui.get("jobs"):
+                    id_map = {}
+                    for j in for_ui["jobs"]:
+                        id_map[j["seq"]] = {"id": j["id"], "title": j["title"], "company": j["company"]}
+                    cl.user_session.set("job_id_map", id_map)
 
         elif event.type == "error":
             error_text = event.data.get("message", "")

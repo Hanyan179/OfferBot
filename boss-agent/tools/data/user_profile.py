@@ -99,7 +99,13 @@ class GetUserProfileTool(Tool):
                 "priorities": _safe_json_load(prefs.get("priorities")),
             }
 
-        return profile
+        return {
+            "for_ui": {
+                "element_name": "ResumeCard",
+                "resume": profile,
+            },
+            "for_agent": profile,
+        }
 
 
 class UpdateUserProfileTool(Tool):

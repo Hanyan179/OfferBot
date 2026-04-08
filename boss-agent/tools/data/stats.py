@@ -89,7 +89,7 @@ class GetStatsTool(Tool):
             "GROUP BY j.title ORDER BY count DESC"
         )
 
-        return {
+        stats = {
             "total_applications": total_applications,
             "total_replied": total_replied,
             "reply_rate": reply_rate,
@@ -98,4 +98,20 @@ class GetStatsTool(Tool):
             "avg_match_score": avg_match_score,
             "by_company": [dict(r) for r in by_company],
             "by_title": [dict(r) for r in by_title],
+        }
+
+        return {
+            "for_ui": {
+                "element_name": "BadgeWall",
+                "cards": [
+                    {"label": "总投递", "value": total_applications},
+                    {"label": "已回复", "value": total_replied},
+                    {"label": "回复率", "value": f"{reply_rate:.0%}"},
+                    {"label": "面试邀约", "value": total_interviews},
+                    {"label": "面试率", "value": f"{interview_rate:.0%}"},
+                    {"label": "平均匹配度", "value": f"{avg_match_score:.1f}"},
+                ],
+                "stats": stats,
+            },
+            "for_agent": stats,
         }

@@ -203,6 +203,7 @@ class QueryJobsTool(Tool):
         return {
             "success": True,
             "for_ui": {
+                "element_name": "JobList",
                 "jobs": ui_jobs,
                 "total_matched": total_matched,
                 "showing": len(ui_jobs),
