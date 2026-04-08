@@ -369,12 +369,11 @@ async def on_chat_start():
     cl.user_session.set("trace_store", trace_store)
 
     # --- 解析对话 ID ---
-    # 生成新对话 ID，但不创建文件。
-    # 文件在用户真正发消息时（save_message）才创建，
-    # 避免浏览器刷新产生空对话文件。
-    from datetime import datetime as _dt
-    conv_id = _dt.now().strftime("%Y-%m-%dT%H-%M-%S")
-    print(f">>> on_chat_start: 新对话 conv_id={conv_id}")
+    # 创建新对话（文件 + .active 标记）。
+    # 必须创建文件，因为 Chainlit 的 AutoResumeThread 会触发 resume_thread，
+    # 需要 JSONL 文件存在才能正常恢复。
+    conv_id = await chat_store.create_conversation()
+    print(f">>> on_chat_start: 新建对话 conv_id={conv_id}")
 
     # on_chat_start 永远不恢复旧消息。新对话 = 空历史。
     # chat_history 保持为空列表（仅后续注入 system 上下文）。
