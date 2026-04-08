@@ -272,19 +272,16 @@ async def on_chat_resume(thread):
                 )
             await cl.Message(content=welcome).send()
 
-    # ---- 恢复最近的 JobList（从对话历史中找 query_jobs 的结果摘要，重新查询渲染）----
+    # ---- 恢复最近的 JobList ----
     if has_history and db:
         try:
-            history = cl.user_session.get("chat_history", [])
-            # 找最近一条包含 "已在 UI 展示" 的 tool result（for_agent 的标记）
-            last_query_params = None
-            for msg in reversed(history):
-                content = msg.get("content", "")
-                if msg.get("role") == "tool" and "已在 UI 展示" in content:
-                    # 找到了，但我们不知道原始参数，直接查最近的岗位
-                    last_query_params = {}
-                    break
-            if last_query_params is not None:
+            # 检查对话历史中是否有搜索岗位相关的用户消息
+            search_keywords = ["岗位", "搜索", "找工作", "查找", "AI", "薪资", "工资", "K"]
+            has_search = any(
+                msg.get("role") == "user" and any(kw in msg.get("content", "") for kw in search_keywords)
+                for msg in (restored or [])
+            )
+            if has_search:
                 from tools.data.query_jobs import QueryJobsTool
                 result = await QueryJobsTool().execute({"limit": 50}, {"db": db})
                 for_ui = result.get("for_ui", {})
