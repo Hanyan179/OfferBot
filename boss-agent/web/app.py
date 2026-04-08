@@ -1226,11 +1226,25 @@ async def ai_exposure_page():
     )
 
 
+@app.get("/api/analysis/ai-exposure")
+async def api_ai_exposure_get():
+    """读取缓存的 AI 替代性分析结果"""
+    import json as _json
+    db = await _get_db()
+    rows = await db.execute("SELECT value FROM user_preferences WHERE key = ?", ("ai_exposure_analysis",))
+    if rows and rows[0].get("value"):
+        try:
+            return JSONResponse({"ok": True, "analysis": _json.loads(rows[0]["value"]), "cached": True})
+        except Exception:
+            pass
+    return JSONResponse({"ok": True, "analysis": None, "cached": False})
+
+
 @app.post("/api/analysis/ai-exposure")
 async def api_ai_exposure():
     """基于用户画像 + Anthropic Economic Index 生成 AI 替代性分析。
 
-    流程：确定性数据匹配 → 精简数据组装 → LLM 解读
+    流程：确定性数据匹配 → 精简数据组装 → LLM 解读 → 持久化
     """
     import json as _json
     from openai import AsyncOpenAI
@@ -1274,7 +1288,7 @@ async def api_ai_exposure():
             },
         })
 
-    # ---- Step 2: 获取任务级数据 ----
+    # ---- Step 2: 获取任务级数据（已自动翻译为中文） ----
     occ_codes = [o["occ_code"] for o in matched_occs]
     task_data = get_task_details(occ_codes)
 
@@ -1340,7 +1354,7 @@ async def api_ai_exposure():
                 raw = raw[4:]
         analysis = _json.loads(raw)
 
-        # 附加确定性数据（前端直接展示，不依赖 LLM）
+        # 附加确定性数据
         analysis["matched_occupations"] = matched_occs
         analysis["task_data"] = {
             "high_penetration": task_data["high_penetration"],
@@ -1348,11 +1362,18 @@ async def api_ai_exposure():
             "total_tasks": task_data["total_tasks"],
             "avg_penetration": task_data["avg_penetration"],
         }
-        # 综合曝光度取匹配职业的加权平均
         if matched_occs:
             analysis["overall_exposure"] = round(
                 sum(o["exposure"] for o in matched_occs) / len(matched_occs), 4
             )
+
+        # ---- 持久化 ----
+        await db.execute_write(
+            "INSERT INTO user_preferences (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP",
+            ("ai_exposure_analysis", _json.dumps(analysis, ensure_ascii=False)),
+        )
+
         return JSONResponse({"ok": True, "analysis": analysis})
     except _json.JSONDecodeError:
         return JSONResponse({"ok": False, "error": "AI 返回格式异常，请重试"})
