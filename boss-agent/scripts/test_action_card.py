@@ -1,5 +1,5 @@
 """
-ActionCard + TaskPanel 组件测试页面。
+ActionCard + TaskPanel 测试页面。
 
 用法：
   cd boss-agent
@@ -10,8 +10,8 @@ ActionCard + TaskPanel 组件测试页面。
   fetch_detail  — 批量抓详情卡片
   deliver       — 投递打招呼卡片
   all           — 显示所有卡片
-  tasks         — 显示任务面板（mock 数据）
-  tasks_live    — 显示任务面板（轮询真实 /api/tasks）
+  tasks         — 推送 mock 任务到右侧面板
+  demo          — 完整流程演示
 """
 
 import json
@@ -19,7 +19,6 @@ import asyncio
 import chainlit as cl
 
 # ---- 猎聘选项 ----
-
 CITY_OPTIONS = [
     {"value": "全国", "label": "全国"}, {"value": "北京", "label": "北京"},
     {"value": "上海", "label": "上海"}, {"value": "天津", "label": "天津"},
@@ -46,7 +45,6 @@ EDU_OPTIONS = [
     {"value": "060", "label": "博士"},
 ]
 
-# ---- Mock 岗位 ----
 MOCK_JOBS = [
     {"id": 101, "title": "AI Agent 工程师", "company": "字节跳动", "salary": "40-60K", "city": "上海", "has_jd": True},
     {"id": 102, "title": "LLM 应用开发", "company": "阿里巴巴", "salary": "35-50K", "city": "杭州", "has_jd": False},
@@ -57,7 +55,6 @@ MOCK_JOBS = [
     {"id": 107, "title": "大模型应用开发", "company": "京东", "salary": "30-50K", "city": "北京", "has_jd": False},
 ]
 
-# ---- 卡片定义 ----
 MOCK_CARDS = {
     "start_task": {
         "card_type": "start_task",
@@ -78,9 +75,7 @@ MOCK_CARDS = {
         "card_type": "fetch_detail",
         "title": "📄 批量获取岗位详情",
         "description": "将爬取选中岗位的完整 JD（已有 JD 的会自动跳过）",
-        "fields": [
-            {"id": "force", "label": "强制重新获取", "type": "switch", "value": False},
-        ],
+        "fields": [{"id": "force", "label": "强制重新获取", "type": "switch", "value": False}],
         "jobs": MOCK_JOBS,
         "status": "pending",
     },
@@ -94,69 +89,30 @@ MOCK_CARDS = {
     },
 }
 
-# ---- Mock 任务数据 ----
 MOCK_TASKS = [
-    {
-        "task_id": "liepin-1712548800",
-        "name": "爬取岗位列表",
-        "platform": "liepin",
-        "status": "running",
-        "progress_text": "32/100",
-        "elapsed_s": 45,
-        "started_at": "2026-04-08T11:00:00",
-        "finished_at": None,
-    },
-    {
-        "task_id": "fetch-detail-1712548900",
-        "name": "爬取岗位详情（5条）",
-        "platform": "liepin",
-        "status": "running",
-        "progress_text": "2/5 成功2 失败0",
-        "elapsed_s": 120,
-        "started_at": "2026-04-08T10:58:00",
-        "finished_at": None,
-    },
-    {
-        "task_id": "rag-insert-1712549000",
-        "name": "知识图谱化（3条）",
-        "platform": "rag",
-        "status": "completed",
-        "progress_text": "3/3",
-        "elapsed_s": 72,
-        "started_at": "2026-04-08T10:55:00",
-        "finished_at": "2026-04-08T10:56:12",
-    },
-    {
-        "task_id": "deliver-1712549100",
-        "name": "投递打招呼（2条）",
-        "platform": "liepin",
-        "status": "failed",
-        "progress_text": "登录已过期",
-        "elapsed_s": 8,
-        "started_at": "2026-04-08T10:50:00",
-        "finished_at": "2026-04-08T10:50:08",
-    },
+    {"task_id": "t1", "name": "爬取岗位列表", "platform": "liepin", "status": "running", "progress_text": "32/100", "elapsed_s": 45},
+    {"task_id": "t2", "name": "爬取岗位详情（5条）", "platform": "liepin", "status": "running", "progress_text": "2/5", "elapsed_s": 120},
+    {"task_id": "t3", "name": "知识图谱化（3条）", "platform": "rag", "status": "completed", "progress_text": "3/3", "elapsed_s": 72},
+    {"task_id": "t4", "name": "投递打招呼（2条）", "platform": "liepin", "status": "failed", "progress_text": "登录已过期", "elapsed_s": 8},
 ]
+
+
+async def push_tasks(task_list):
+    """推送任务状态到右侧面板（不污染对话流）"""
+    await cl.send_window_message(json.dumps({"type": "task_panel_update", "tasks": task_list}))
 
 
 @cl.on_chat_start
 async def on_start():
-    # 创建持久的任务面板（display="side"，挂在欢迎消息上，始终可从侧边栏访问）
-    task_panel = cl.CustomElement(name="TaskPanel", props={"tasks": []}, display="side")
-    cl.user_session.set("task_panel", task_panel)
-
     await cl.Message(
         content=(
             "🧪 **ActionCard + TaskPanel 测试页面**\n\n"
-            "操作卡片：\n"
+            "操作卡片（对话流内）：\n"
             "- `start_task` / `fetch_detail` / `deliver` / `all`\n\n"
-            "任务面板（右侧）：\n"
-            "- `tasks` — 加载 mock 任务到右侧面板\n"
-            "- `tasks_live` — 轮询真实 /api/tasks\n\n"
-            "模拟流程：\n"
-            "- `demo` — 完整流程：卡片确认 → 右侧面板出现进度"
-        ),
-        elements=[task_panel],
+            "任务面板（右侧固定）：\n"
+            "- `tasks` — 推送 mock 任务到右侧面板\n"
+            "- `demo` — 完整流程：卡片确认 → 右侧面板自动展开显示进度"
+        )
     ).send()
 
 
@@ -179,34 +135,23 @@ async def on_message(message: cl.Message):
         return
 
     if text == "tasks":
-        panel = cl.user_session.get("task_panel")
-        if panel:
-            panel.props["tasks"] = MOCK_TASKS
-            await panel.update()
-        await cl.Message(content="✅ 已加载 mock 任务到右侧面板，点击右侧查看。").send()
-        return
-
-    if text == "tasks_live":
-        panel = cl.user_session.get("task_panel")
-        if panel:
-            panel.props["poll_url"] = "http://localhost:7860/api/tasks"
-            await panel.update()
-        await cl.Message(content="✅ 右侧面板已切换为实时轮询模式。").send()
+        await push_tasks(MOCK_TASKS)
+        await cl.Message(content="✅ 已推送任务到右侧面板。").send()
         return
 
     if text == "demo":
         await _run_demo()
         return
 
-    await cl.Message(content=f"未知命令: `{text}`\n\n可用: start_task / fetch_detail / deliver / all / tasks / tasks_live / demo").send()
+    await cl.Message(content=f"未知命令: `{text}`\n\n可用: start_task / fetch_detail / deliver / all / tasks / demo").send()
 
 
 async def _run_demo():
-    """模拟完整流程：显示爬取卡片 → 用户确认 → 右侧面板出现进度 → 完成"""
+    """完整流程：卡片确认 → 右侧面板自动展开 → 进度推进 → 完成"""
     card = cl.CustomElement(name="ActionCard", props=MOCK_CARDS["start_task"], display="inline")
     cl.user_session.set("card_start_task", card)
     await cl.Message(content="AI 分析了你的需求，建议执行以下操作：", elements=[card]).send()
-    await cl.Message(content="💡 点击卡片上的「执行」按钮，右侧任务面板会显示进度。").send()
+    await cl.Message(content="💡 点击卡片上的「执行」按钮试试。").send()
 
 
 @cl.action_callback("action_card_submit")
@@ -216,12 +161,8 @@ async def on_action_submit(action: cl.Action):
     params = payload.get("params", {})
     job_ids = payload.get("job_ids", [])
 
-    parts = [f"✅ 用户确认执行 **{card_type}**"]
-    if params:
-        parts.append(f"```json\n{json.dumps(params, ensure_ascii=False, indent=2)}\n```")
-    if job_ids:
-        parts.append(f"选中岗位: {len(job_ids)} 个")
-    await cl.Message(content="\n".join(parts)).send()
+    # 对话流中只说一句
+    await cl.Message(content=f"✅ 开始执行 **{card_type}**，进度请看右侧面板 →").send()
 
     # 更新卡片状态
     card_el = cl.user_session.get(f"card_{card_type}")
@@ -229,59 +170,30 @@ async def on_action_submit(action: cl.Action):
         card_el.props["status"] = "executing"
         await card_el.update()
 
-    # 模拟任务进度（更新右侧面板）
-    panel_el = cl.user_session.get("task_panel")
-    if panel_el:
-        existing = panel_el.props.get("tasks") or []
-        task = {
-            "task_id": f"{card_type}-demo",
-            "name": {"start_task": "爬取岗位列表", "fetch_detail": f"爬取岗位详情（{len(job_ids)}条）", "deliver": f"投递打招呼（{len(job_ids)}条）"}.get(card_type, card_type),
-            "platform": "liepin",
-            "status": "running",
-            "progress_text": "0/100",
-            "elapsed_s": 0,
-        }
-        panel_el.props["tasks"] = [task] + [t for t in existing if t["task_id"] != task["task_id"]]
-        await panel_el.update()
+    # 推送任务到右侧面板（自动展开）
+    task_name = {"start_task": "爬取岗位列表", "fetch_detail": f"爬取岗位详情（{len(job_ids)}条）", "deliver": f"投递打招呼（{len(job_ids)}条）"}.get(card_type, card_type)
+    task = {"task_id": f"{card_type}-demo", "name": task_name, "platform": "liepin", "status": "running", "progress_text": "0/100", "elapsed_s": 0}
 
-        for i in range(1, 6):
-            await asyncio.sleep(1)
-            task["progress_text"] = f"{i * 20}/100"
-            task["elapsed_s"] = i
-            panel_el.props["tasks"] = [task] + [t for t in existing if t["task_id"] != task["task_id"]]
-            await panel_el.update()
+    for i in range(1, 6):
+        task["progress_text"] = f"{i * 20}/100"
+        task["elapsed_s"] = i
+        await push_tasks([task])
+        await asyncio.sleep(1)
 
-        task["status"] = "completed"
-        task["progress_text"] = "100/100"
-        task["elapsed_s"] = 5
-        panel_el.props["tasks"] = [task] + [t for t in existing if t["task_id"] != task["task_id"]]
-        await panel_el.update()
+    # 完成
+    task["status"] = "completed"
+    task["progress_text"] = "100/100"
+    task["elapsed_s"] = 5
+    await push_tasks([task])
 
-    # 更新卡片为完成
+    # 更新卡片
     if card_el:
         card_el.props["status"] = "completed"
         card_el.props["result_message"] = "执行完成！"
         await card_el.update()
 
-    await cl.Message(content="✅ 任务已完成，数据已同步到本地。").send()
-
 
 @cl.action_callback("action_card_cancel")
 async def on_action_cancel(action: cl.Action):
     card_type = (action.payload or {}).get("card_type", "unknown")
-    await cl.Message(content=f"❌ 用户取消了 **{card_type}** 操作").send()
-
-
-@cl.action_callback("task_panel_stop")
-async def on_task_stop(action: cl.Action):
-    payload = action.payload or {}
-    task_id = payload.get("task_id", "")
-    await cl.Message(content=f"⏹ 停止任务: {task_id}").send()
-
-    panel_el = cl.user_session.get("task_panel")
-    if panel_el and panel_el.props.get("tasks"):
-        for t in panel_el.props["tasks"]:
-            if t["task_id"] == task_id:
-                t["status"] = "failed"
-                t["progress_text"] = "已停止"
-        await panel_el.update()
+    await cl.Message(content=f"❌ 已取消 **{card_type}**").send()
