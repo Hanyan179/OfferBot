@@ -213,21 +213,32 @@ class Executor:
                 # 检查是否为 action_card（需要用户确认的操作）
                 result_content = result.message.content if result.message else ""
                 is_action_card = False
+                is_ui_render = False
                 try:
                     result_parsed = json.loads(result_content)
-                    if isinstance(result_parsed, dict) and result_parsed.get("action") == "confirm_required":
-                        yield AgentEvent.action_card(result_parsed)
-                        is_action_card = True
-                        # 告诉 LLM 已生成操作卡片，不需要继续处理
-                        result_content = json.dumps({
-                            "action": "confirm_required",
-                            "card_type": result_parsed.get("card_type"),
-                            "message": "已生成操作卡片，等待用户在 UI 上确认后执行。你可以继续对话。"
-                        }, ensure_ascii=False)
+                    if isinstance(result_parsed, dict):
+                        if result_parsed.get("action") == "confirm_required":
+                            yield AgentEvent.action_card(result_parsed)
+                            is_action_card = True
+                            result_content = json.dumps({
+                                "action": "confirm_required",
+                                "card_type": result_parsed.get("card_type"),
+                                "message": "已生成操作卡片，等待用户在 UI 上确认后执行。你可以继续对话。"
+                            }, ensure_ascii=False)
+                        elif "for_ui" in result_parsed and "for_agent" in result_parsed:
+                            # 结果分流：for_ui 推前端渲染，for_agent 给 LLM
+                            yield AgentEvent.ui_render({
+                                "tool_name": tool_name,
+                                "for_ui": result_parsed["for_ui"],
+                            })
+                            is_ui_render = True
+                            result_content = json.dumps(
+                                result_parsed["for_agent"], ensure_ascii=False
+                            )
                 except (json.JSONDecodeError, TypeError):
                     pass
 
-                if not is_action_card and len(result_content) > 2000:
+                if not is_action_card and not is_ui_render and len(result_content) > 2000:
                     # 尝试解析 JSON，提取关键字段做摘要
                     try:
                         import json as _json

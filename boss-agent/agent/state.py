@@ -219,6 +219,14 @@ class AgentEvent:
             timestamp=datetime.now(),
         )
 
+    @staticmethod
+    def ui_render(render_data: dict[str, Any]) -> "AgentEvent":
+        return AgentEvent(
+            type="ui_render",
+            data=render_data,
+            timestamp=datetime.now(),
+        )
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "type": self.type,

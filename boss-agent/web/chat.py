@@ -768,6 +768,19 @@ async def handle_user_message(content: str):
             cl.user_session.set(f"action_card_{card_type}", element)
             await cl.Message(content="", elements=[element]).send()
 
+        elif event.type == "ui_render":
+            # Tool 结果分流 — 渲染 UI 组件，AI 只收到摘要
+            tool_name = event.data.get("tool_name", "")
+            for_ui = event.data.get("for_ui", {})
+
+            if tool_name == "query_jobs" and for_ui.get("jobs"):
+                element = cl.CustomElement(
+                    name="JobList",
+                    props=for_ui,
+                    display="inline",
+                )
+                await cl.Message(content="", elements=[element]).send()
+
         elif event.type == "error":
             error_text = event.data.get("message", "")
             await cl.Message(content=f"❌ {error_text}").send()
