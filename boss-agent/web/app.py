@@ -1103,6 +1103,146 @@ async def job_detail_page(job_id: int):
     )
 
 
+# ---- AI 替代性分析 ----
+
+@app.get("/analysis/ai-exposure")
+async def ai_exposure_page():
+    from fastapi.responses import FileResponse
+    return FileResponse(
+        str(Path(__file__).parent / "static" / "ai_exposure.html"),
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+    )
+
+
+@app.post("/api/analysis/ai-exposure")
+async def api_ai_exposure():
+    """基于用户画像 + Anthropic Economic Index 生成 AI 替代性分析。"""
+    import json as _json
+    from openai import AsyncOpenAI
+    from services.exposure_data import search as exposure_search
+
+    db = await _get_db()
+    resume = await _load_active_resume(db)
+    if not resume.get("name") and not resume.get("tech_stack"):
+        return JSONResponse({"ok": False, "error": "请先完善用户画像（简历信息）"})
+
+    settings = await _load_llm_settings(db)
+    api_key = settings.get("llm_api_key")
+    if not api_key:
+        return JSONResponse({"ok": False, "error": "请先在设置页面配置 API Key"})
+
+    base_url = settings.get("llm_base_url") or "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    model = settings.get("llm_model") or "qwen3.5-flash"
+
+    # 用用户的岗位/技能去匹配 O*NET 职业
+    query_terms = []
+    if resume.get("current_role"):
+        query_terms.append(resume["current_role"])
+    if resume.get("job_preferences") and resume["job_preferences"].get("target_roles"):
+        query_terms.extend(resume["job_preferences"]["target_roles"])
+    if not query_terms and resume.get("tech_stack"):
+        query_terms.append(" ".join(resume["tech_stack"][:5]))
+    if not query_terms:
+        query_terms = ["software developer"]
+
+    matched_occs = []
+    seen = set()
+    for term in query_terms[:3]:
+        for occ in exposure_search(term, top_k=3):
+            if occ["occ_code"] not in seen:
+                seen.add(occ["occ_code"])
+                matched_occs.append(occ)
+
+    # 构造用户画像摘要
+    profile_parts = []
+    if resume.get("name"):
+        profile_parts.append(f"姓名: {resume['name']}")
+    if resume.get("current_role"):
+        profile_parts.append(f"当前职位: {resume['current_role']}")
+    if resume.get("current_company"):
+        profile_parts.append(f"当前公司: {resume['current_company']}")
+    if resume.get("tech_stack"):
+        profile_parts.append(f"技术栈: {', '.join(resume['tech_stack'][:20])}")
+    if resume.get("experience"):
+        profile_parts.append(f"经验: {resume['experience']}")
+    if resume.get("summary"):
+        profile_parts.append(f"简介: {resume['summary'][:300]}")
+    if resume.get("work_experience"):
+        for exp in resume["work_experience"][:3]:
+            profile_parts.append(f"工作经历: {exp.get('company','')} - {exp.get('role','')} ({exp.get('duration','')})")
+    if resume.get("job_preferences") and resume["job_preferences"].get("target_roles"):
+        profile_parts.append(f"目标岗位: {', '.join(resume['job_preferences']['target_roles'])}")
+    profile_text = "\n".join(profile_parts)
+
+    occ_text = "\n".join(
+        f"- {o['title']} (O*NET: {o['occ_code']}, AI曝光度: {o['exposure']:.4f})"
+        for o in matched_occs
+    )
+
+    prompt = f"""你是一位 AI 与劳动力市场分析专家。基于 Anthropic Economic Index 的研究数据和用户画像，生成个性化的 AI 替代性分析报告。
+
+## 用户画像
+{profile_text}
+
+## 匹配到的 O*NET 职业及 AI 曝光度
+{occ_text}
+
+说明：AI 曝光度 (observed_exposure) 范围 0-1，表示该职业中有多大比例的工作任务正在被 AI 渗透。
+- 0.0-0.15: 低曝光（AI 影响较小）
+- 0.15-0.35: 中等曝光（部分任务可被 AI 辅助）
+- 0.35-0.60: 较高曝光（大量任务可被 AI 增强或部分替代）
+- 0.60+: 高曝光（核心任务正在被 AI 深度渗透）
+
+## 请输出以下 JSON（不要输出其他内容）
+
+{{
+  "overall_exposure": <0-1 的综合曝光度评估>,
+  "exposure_level": "<低/中等/较高/高>",
+  "verdict": "<一句话总结>",
+  "summary": "<2-3 句话的整体分析>",
+  "dimensions": [
+    {{"name": "增强潜力", "score": <0-100>, "description": "<AI 如何增强该用户的工作能力>"}},
+    {{"name": "替代风险", "score": <0-100>, "description": "<哪些工作内容面临被替代的风险>"}},
+    {{"name": "自动化程度", "score": <0-100>, "description": "<当前工作中可被自动化的比例>"}},
+    {{"name": "技能独特性", "score": <0-100>, "description": "<用户技能中 AI 难以替代的部分>"}}
+  ],
+  "augmentation": {{
+    "summary": "<AI 增强机会总结>",
+    "items": ["<具体的增强场景1>", "<具体的增强场景2>", ...]
+  }},
+  "automation_risk": {{
+    "summary": "<自动化风险总结>",
+    "items": ["<具体的风险点1>", "<具体的风险点2>", ...]
+  }},
+  "skill_transition": {{
+    "summary": "<技能转型建议总结>",
+    "items": ["<具体建议1>", "<具体建议2>", ...]
+  }},
+  "suggestions": ["<综合行动建议1>", "<综合行动建议2>", ...]
+}}"""
+
+    try:
+        client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=120)
+        resp = await client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,
+        )
+        raw = resp.choices[0].message.content.strip()
+        # 提取 JSON
+        if "```" in raw:
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        analysis = _json.loads(raw)
+        analysis["matched_occupations"] = matched_occs
+        return JSONResponse({"ok": True, "analysis": analysis})
+    except _json.JSONDecodeError:
+        return JSONResponse({"ok": False, "error": "AI 返回格式异常，请重试"})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)})
+
+
 # ---- 挂载 Chainlit ----
 
 mount_chainlit(app=app, target=str(Path(__file__).parent / "chat.py"), path="/chat")
