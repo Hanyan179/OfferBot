@@ -619,7 +619,7 @@ async def api_chat(request: Request):
             return JSONResponse({"ok": False, "error": "请先在设置中配置 LLM"})
 
         from openai import AsyncOpenAI
-        client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=60)
+        client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=120)
         resp = await client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": message}],
@@ -675,8 +675,8 @@ async def api_test_chat(request: Request):
     registry, _skill_loader = create_tool_registry()
     client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=120)
 
-    # 构建 OpenAI tools schema
-    tools_schema = registry.get_all_schemas()
+    # 工具集路由：初始只激活 core
+    active_toolsets: set[str] = {"core"}
 
     # 构建消息
     messages = [{"role": "system", "content": build_full_system_prompt()}]
@@ -697,6 +697,9 @@ async def api_test_chat(request: Request):
 
     try:
         for turn in range(max_turns):
+            # 每轮重新获取 schema，确保 activate_toolset 效果立即生效
+            tools_schema = registry.get_schemas_for_toolsets(active_toolsets)
+
             conv_logger.log_llm_request(model=model, message_count=len(messages), has_tools=True)
             llm_start = time.time()
 
@@ -769,6 +772,7 @@ async def api_test_chat(request: Request):
                         result = await tool.execute(tool_args, context={
                             "db": db, "getjob_client": GetjobClient(), "task_monitor": TaskMonitor(),
                             "agent_busy_check": lambda: False, "job_rag": app.state.job_rag,
+                            "active_toolsets": active_toolsets, "registry": registry,
                         })
                         result_str = _json.dumps(result, ensure_ascii=False, default=str)[:2000] if result else "{}"
                         tc_report["success"] = True

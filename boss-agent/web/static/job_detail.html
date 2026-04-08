@@ -329,24 +329,41 @@ async function runAI() {
 ${resumeInfo}`;
 
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 120000); // 2分钟超时
+    el.innerHTML = '<div class="ai-loading">AI 正在进行多维匹配分析...<br><span style="font-size:11px;color:#999;">通常需要 15-30 秒，请耐心等待</span></div>';
+
     const resp = await fetch(`${API}/api/chat`, {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({message: prompt})
+      body: JSON.stringify({message: prompt}),
+      signal: controller.signal,
     });
+    clearTimeout(timeout);
+
     const data = await resp.json();
+    if (!data.ok) {
+      el.innerHTML = `<div class="ai-error">分析失败: ${esc(data.error || '未知错误')}</div>`;
+      btn.disabled = false; btn.textContent = '🤖 重新分析';
+      return;
+    }
     const reply = data.reply || '';
     let analysis = null;
     try { const m = reply.match(/\{[\s\S]*\}/); if (m) analysis = JSON.parse(m[0]); } catch(e) {}
     if (analysis) {
       renderAnalysis(analysis);
-      // 持久化到数据库
       fetch(`${API}/api/jobs/${jobId}/analysis`, {
         method: 'POST', headers: {'Content-Type':'application/json'},
         body: JSON.stringify({analysis})
       }).catch(() => {});
     }
     else el.innerHTML = `<div class="ai-card"><div class="ai-text">${esc(reply)}</div></div>`;
-  } catch(e) { el.innerHTML = `<div class="ai-error">分析失败: ${e.message}</div>`; }
+  } catch(e) {
+    if (e.name === 'AbortError') {
+      el.innerHTML = '<div class="ai-error">分析超时（超过 2 分钟），请重试</div>';
+    } else {
+      el.innerHTML = `<div class="ai-error">分析失败: ${esc(e.message)}</div>`;
+    }
+  }
   btn.disabled = false; btn.textContent = '🤖 重新分析';
 }
 
