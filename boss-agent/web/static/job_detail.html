@@ -380,6 +380,11 @@ function renderAnalysis(a) {
     h += `</div>`;
   }
 
+  // 画像洞察
+  if (a.profile_insights) {
+    h += `<div class="ai-card"><div class="ai-card-title">🧠 画像洞察</div><div class="ai-text">${esc(a.profile_insights)}</div></div>`;
+  }
+
   el.innerHTML = h;
 }
 

@@ -1006,12 +1006,32 @@ async def api_save_job_analysis(job_id: int, request: Request):
 - 期望薪资：{resume.get('salary_min','?')}-{resume.get('salary_max','?')}K
 - 期望城市：{', '.join(resume.get('target_cities') or [])}"""
 
+    # 3. 读记忆画像（职业规划、求职目标、要点信息等软性维度）
+    memory_section = ""
+    from pathlib import Path as _MemPath
+    memory_dir = _MemPath(__file__).parent.parent / "data" / "记忆画像"
+    relevant_files = ["职业规划.md", "求职冲刺目标.md", "要点信息.md", "个人需求.md", "价值观.md"]
+    memory_parts = []
+    for fname in relevant_files:
+        fpath = memory_dir / fname
+        if fpath.exists():
+            content = fpath.read_text(encoding="utf-8").strip()
+            if content and len(content) > 20:
+                # 截取前 500 字，避免 prompt 过长
+                memory_parts.append(f"【{fname.replace('.md','')}】\n{content[:500]}")
+    if memory_parts:
+        memory_section = "\n\n候选人画像（来自对话记忆，反映真实偏好和软性特征）：\n" + "\n\n".join(memory_parts)
+
     # 3. 构建精准 prompt
     salary = _format_salary(job.get("salary_min"), job.get("salary_max"))
     prompt = f"""你是一位专业的求职顾问。请对以下岗位与候选人进行匹配分析。
 
+分析需要结合两个维度：
+1. 简历 vs JD：硬性条件对比（技能、学历、经验、薪资）
+2. 画像 vs JD：软性匹配（职业方向契合度、文化偏好、成长空间）
+
 严格按以下 JSON 格式返回，不要输出任何其他内容：
-{{"overall_score":0-100,"verdict":"一句话结论","summary":"2-3句总体分析","hard_check":[{{"dimension":"学历","requirement":"","candidate":"","status":"pass/fail/warn/na","note":""}},{{"dimension":"经验年限","requirement":"","candidate":"","status":"","note":""}},{{"dimension":"薪资匹配","requirement":"","candidate":"","status":"","note":""}},{{"dimension":"城市","requirement":"","candidate":"","status":"","note":""}}],"dimensions":[{{"name":"技术匹配","score":0-100,"detail":""}},{{"name":"经验匹配","score":0-100,"detail":""}},{{"name":"项目相关性","score":0-100,"detail":""}},{{"name":"成长潜力","score":0-100,"detail":""}}],"skills":{{"matched":[],"missing":[],"bonus":[]}},"strengths":[],"gaps":[],"suggestions":[],"interview_tips":[]}}
+{{"overall_score":0-100,"verdict":"一句话结论","summary":"2-3句总体分析","hard_check":[{{"dimension":"学历","requirement":"","candidate":"","status":"pass/fail/warn/na","note":""}},{{"dimension":"经验年限","requirement":"","candidate":"","status":"","note":""}},{{"dimension":"薪资匹配","requirement":"","candidate":"","status":"","note":""}},{{"dimension":"城市","requirement":"","candidate":"","status":"","note":""}}],"dimensions":[{{"name":"技术匹配","score":0-100,"detail":""}},{{"name":"经验匹配","score":0-100,"detail":""}},{{"name":"项目相关性","score":0-100,"detail":""}},{{"name":"职业方向契合","score":0-100,"detail":"基于候选人画像中的职业规划和求职目标"}},{{"name":"文化与偏好契合","score":0-100,"detail":"基于候选人画像中的价值观和个人需求"}}],"skills":{{"matched":[],"missing":[],"bonus":[]}},"strengths":[],"gaps":[],"suggestions":[],"interview_tips":[],"profile_insights":"基于候选人画像的额外洞察（如：该岗位是否符合候选人的长期规划、是否匹配其偏好的工作模式等），2-3句话"}}
 
 岗位信息：
 - 职位：{job.get('title','')}
@@ -1021,7 +1041,8 @@ async def api_save_job_analysis(job_id: int, request: Request):
 - 经验要求：{job.get('experience','未知')}
 - 学历要求：{job.get('education','未知')}
 - JD：{raw_jd[:1500]}
-{resume_section}"""
+{resume_section}
+{memory_section}"""
 
     # 4. 调 LLM
     settings = await _load_llm_settings(db)
