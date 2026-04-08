@@ -272,6 +272,32 @@ async def on_chat_resume(thread):
                 )
             await cl.Message(content=welcome).send()
 
+    # ---- 恢复最近的 JobList（从对话历史中找 query_jobs 的结果摘要，重新查询渲染）----
+    if has_history and db:
+        try:
+            history = cl.user_session.get("chat_history", [])
+            # 找最近一条包含 "已在 UI 展示" 的 tool result（for_agent 的标记）
+            last_query_params = None
+            for msg in reversed(history):
+                content = msg.get("content", "")
+                if msg.get("role") == "tool" and "已在 UI 展示" in content:
+                    # 找到了，但我们不知道原始参数，直接查最近的岗位
+                    last_query_params = {}
+                    break
+            if last_query_params is not None:
+                from tools.data.query_jobs import QueryJobsTool
+                result = await QueryJobsTool().execute({"limit": 50}, {"db": db})
+                for_ui = result.get("for_ui", {})
+                if for_ui.get("jobs"):
+                    id_map = {}
+                    for j in for_ui["jobs"]:
+                        id_map[j["seq"]] = {"id": j["id"], "title": j["title"], "company": j["company"]}
+                    cl.user_session.set("job_id_map", id_map)
+                    element = cl.CustomElement(name="JobList", props=for_ui, display="inline")
+                    await cl.Message(content="📋 上次的岗位列表：", elements=[element]).send()
+        except Exception as e:
+            logger.warning("恢复 JobList 失败: %s", e)
+
     # ---- 恢复 UI 元素（从执行轨迹中找最近的 ui_render 事件）----
     if conv_id and trace_store:
         try:
