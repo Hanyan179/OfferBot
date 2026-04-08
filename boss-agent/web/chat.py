@@ -248,7 +248,6 @@ async def on_chat_resume(thread):
             history.insert(idx, {"role": "system", "content": f"[用户记忆画像]\n{memory_summary}"})
         cl.user_session.set("chat_history", history)
 
-        # 空对话（没有历史消息）时显示欢迎语
         has_history = any(m.get("role") in ("user", "assistant") for m in (restored or []))
         if not has_history:
             if has_profile:
@@ -272,6 +271,31 @@ async def on_chat_resume(thread):
                     "我们先聊聊吧 — 你目前是在职还是离职？做什么方向的？想找什么样的工作？"
                 )
             await cl.Message(content=welcome).send()
+
+    # ---- 恢复 UI 元素（从执行轨迹中找最近的 ui_render 事件）----
+    if conv_id and trace_store:
+        try:
+            traces = trace_store.load_traces(conv_id, limit=5)
+            last_ui_data = None
+            for trace in reversed(traces):
+                for evt in (trace.get("events") or []):
+                    if evt.get("type") == "ui_render":
+                        last_ui_data = evt.get("data", {})
+                if last_ui_data:
+                    break
+            if last_ui_data:
+                tool_name = last_ui_data.get("tool_name", "")
+                for_ui = last_ui_data.get("for_ui", {})
+                if tool_name == "query_jobs" and for_ui.get("jobs"):
+                    # 恢复 id_map
+                    id_map = {}
+                    for j in for_ui["jobs"]:
+                        id_map[j["seq"]] = {"id": j["id"], "title": j["title"], "company": j["company"]}
+                    cl.user_session.set("job_id_map", id_map)
+                    element = cl.CustomElement(name="JobList", props=for_ui, display="inline")
+                    await cl.Message(content="\u200b", elements=[element]).send()
+        except Exception as e:
+            logger.warning("恢复 UI 元素失败: %s", e)
 
 
 @cl.on_chat_start
