@@ -116,7 +116,7 @@ html.dark .no-match-text { color:#999; }
     该数据反映的是<strong>美国劳动力市场</strong>中 AI 对各职业的渗透情况，与中国市场可能存在差异，仅供参考。
   </div>
 
-  <div id="loading" class="loading">
+  <div id="loading" class="loading" style="display:none;">
     <div class="loading-spinner"></div>
     <div>正在分析你的职业 AI 曝光度...<br><span style="font-size:11px;color:#999;">通常需要 15-30 秒</span></div>
   </div>
@@ -276,6 +276,8 @@ function render(a) {
     h += `</div>`;
   }
 
+  h += `<div style="text-align:center;margin:20px 0;"><button class="retry-btn" onclick="regenerate()" style="border-color:rgba(77,150,255,0.3);background:rgba(77,150,255,0.1);color:#4D96FF;">🔄 重新生成分析</button></div>`;
+
   el.innerHTML = h;
 }
 
@@ -285,7 +287,30 @@ window.addEventListener('message', (e) => {
   if (e.data?.type === 'themeChange') document.documentElement.classList.toggle('dark', e.data.dark);
 });
 
-analyze();
+function regenerate() {
+  document.getElementById('result').style.display = 'none';
+  document.getElementById('error').style.display = 'none';
+  document.getElementById('loading').style.display = 'block';
+  analyze();
+}
+
+// 先读缓存，没有再自动生成
+async function init() {
+  const loadEl = document.getElementById('loading');
+  const resEl = document.getElementById('result');
+  try {
+    const cached = await fetch(`${API}/api/analysis/ai-exposure`).then(r => r.json());
+    if (cached.ok && cached.analysis && !cached.analysis.no_match) {
+      resEl.style.display = 'block';
+      render(cached.analysis);
+      return;
+    }
+  } catch(e) {}
+  // 没有缓存，自动生成
+  loadEl.style.display = 'block';
+  analyze();
+}
+init();
 </script>
 </body>
 </html>

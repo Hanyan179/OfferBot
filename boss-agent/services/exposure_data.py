@@ -8,12 +8,57 @@ import json
 from pathlib import Path
 
 _DIR = Path(__file__).parent.parent / "data" / "economic_index"
+_TASK_CN_PATH = _DIR / "task_translations.json"
 
 # ---- 缓存 ----
 _exposure: dict[str, dict] | None = None       # occ_code -> {title, exposure}
 _task_pen: dict[str, float] | None = None       # task_text -> penetration
 _occ_tasks: dict[str, list[str]] | None = None  # occ_code -> [task_text]
 _mapping: dict[str, list[str]] | None = None    # 中文岗位名 -> [occ_code]
+_task_cn: dict[str, str] | None = None          # english task -> chinese task
+
+
+def _load_task_cn() -> dict[str, str]:
+    global _task_cn
+    if _task_cn is not None:
+        return _task_cn
+    if _TASK_CN_PATH.exists():
+        _task_cn = json.loads(_TASK_CN_PATH.read_text(encoding="utf-8"))
+    else:
+        _task_cn = {}
+    return _task_cn
+
+
+def _save_task_cn():
+    if _task_cn is not None:
+        _TASK_CN_PATH.write_text(json.dumps(_task_cn, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+async def translate_tasks(tasks: list[dict], api_key: str, base_url: str, model: str) -> list[dict]:
+    """翻译任务列表，有缓存直接用，没有的批量调 LLM 翻译后缓存。"""
+    cn_cache = _load_task_cn()
+    to_translate = [t["task"] for t in tasks if t["task"] not in cn_cache]
+
+    if to_translate:
+        from openai import AsyncOpenAI
+        numbered = "\n".join(f"{i+1}. {t}" for i, t in enumerate(to_translate))
+        prompt = f"将以下英文职业任务描述翻译为简洁的中文，每行一条，只输出翻译结果，保持编号：\n\n{numbered}"
+        try:
+            client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=30)
+            resp = await client.chat.completions.create(
+                model=model, messages=[{"role": "user", "content": prompt}], temperature=0,
+            )
+            lines = [l.strip() for l in resp.choices[0].message.content.strip().split("\n") if l.strip()]
+            for i, en in enumerate(to_translate):
+                if i < len(lines):
+                    # 去掉编号前缀
+                    cn = lines[i].lstrip("0123456789.、) ").strip()
+                    cn_cache[en] = cn
+            _save_task_cn()
+        except Exception:
+            pass  # 翻译失败就用英文
+
+    return [{"task": cn_cache.get(t["task"], t["task"]), "penetration": t["penetration"]} for t in tasks]
 
 
 def _load_exposure() -> dict[str, dict]:
@@ -113,17 +158,10 @@ def match_occupation(user_role: str) -> list[dict]:
 
 
 def get_task_details(occ_codes: list[str], top_high: int = 8, top_low: int = 5) -> dict:
-    """获取指定职业的任务级渗透率数据。
-
-    Returns: {
-        "high_penetration": [{task, penetration}],  # AI 渗透率最高的任务
-        "low_penetration": [{task, penetration}],    # AI 渗透率最低的任务（AI 难以替代）
-        "total_tasks": int,
-        "avg_penetration": float,
-    }
-    """
+    """获取指定职业的任务级渗透率数据（自动翻译为中文）。"""
     occ_tasks = _load_occ_tasks()
     task_pen = _load_task_penetration()
+    cn = _load_task_cn()
 
     all_tasks = []
     for code in occ_codes:
@@ -132,7 +170,7 @@ def get_task_details(occ_codes: list[str], top_high: int = 8, top_low: int = 5) 
             if pen is None:
                 pen = task_pen.get(task.lower().rstrip("."))
             if pen is not None:
-                all_tasks.append({"task": task, "penetration": pen})
+                all_tasks.append({"task": cn.get(task, task), "penetration": pen})
 
     if not all_tasks:
         return {"high_penetration": [], "low_penetration": [], "total_tasks": 0, "avg_penetration": 0}
