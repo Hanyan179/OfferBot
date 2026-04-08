@@ -210,7 +210,7 @@ class QueryJobsTool(Tool):
             "for_agent": {
                 "displayed": len(ui_jobs),
                 "total_matched": total_matched,
-                "summary": f"已在 UI 展示 {len(ui_jobs)} 条岗位（共匹配 {total_matched} 条）。{top_cities}，{salary_summary}。",
+                "summary": f"已在 UI 展示 {len(ui_jobs)} 条岗位（共匹配 {total_matched} 条）。{top_cities}。",
                 "note": "岗位列表已展示给用户，无需复述。用户提到具体岗位时再响应。",
             },
         }

@@ -58,7 +58,13 @@ export default function JobList() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {pageJobs.map((job) => (
+            {pageJobs.map((job) => {
+              let statusLabel, statusCls;
+              if (job.has_rag) { statusLabel = "已图谱"; statusCls = "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300"; }
+              else if (job.has_analysis) { statusLabel = "已分析"; statusCls = "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300"; }
+              else if (job.has_jd) { statusLabel = "有JD"; statusCls = "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300"; }
+              else { statusLabel = "待爬取"; statusCls = "bg-muted text-muted-foreground"; }
+              return (
               <TableRow key={job.id}>
                 <TableCell className="text-center text-xs text-muted-foreground">{job.seq}</TableCell>
                 <TableCell className="text-sm font-medium">
@@ -70,26 +76,7 @@ export default function JobList() {
                 <TableCell className="text-sm text-nowrap">{job.salary}</TableCell>
                 <TableCell className="text-sm text-nowrap">{job.city}</TableCell>
                 <TableCell className="text-center">
-                  <div className="flex items-center justify-center gap-0.5">
-                    <Tooltip>
-                      <TooltipTrigger>
-                        <span className={`text-xs ${job.has_jd ? 'opacity-100' : 'opacity-30'}`}>📄</span>
-                      </TooltipTrigger>
-                      <TooltipContent>{job.has_jd ? '已有JD' : '未爬取JD'}</TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger>
-                        <span className={`text-xs ${job.has_analysis ? 'opacity-100' : 'opacity-30'}`}>🤖</span>
-                      </TooltipTrigger>
-                      <TooltipContent>{job.has_analysis ? '已AI分析' : '未分析'}</TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger>
-                        <span className={`text-xs ${job.has_rag ? 'opacity-100' : 'opacity-30'}`}>🧠</span>
-                      </TooltipTrigger>
-                      <TooltipContent>{job.has_rag ? '已图谱化' : '未图谱化'}</TooltipContent>
-                    </Tooltip>
-                  </div>
+                  <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${statusCls}`}>{statusLabel}</Badge>
                 </TableCell>
                 <TableCell className="text-center">
                   <div className="flex items-center justify-center gap-1">
@@ -116,7 +103,7 @@ export default function JobList() {
                   </div>
                 </TableCell>
               </TableRow>
-            ))}
+            )})}
           </TableBody>
         </Table>
 
