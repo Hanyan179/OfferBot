@@ -352,41 +352,12 @@ async def on_chat_start():
     cl.user_session.set("trace_store", trace_store)
 
     # --- 解析对话 ID ---
-    # 优先读 .pending_new（前端新建对话时写入），读后立即删除
-    pending_file = chat_store.base_dir / ".pending_new"
-    pending_id: str | None = None
-    if pending_file.exists():
-        pending_id = pending_file.read_text(encoding="utf-8").strip() or None
-        try:
-            pending_file.unlink()
-        except OSError:
-            pass
+    # 永远创建新对话
+    conv_id = await chat_store.create_conversation()
+    print(f">>> on_chat_start: 新建对话 conv_id={conv_id}")
 
-    if pending_id:
-        conv_id = pending_id
-        conv_path = chat_store._conversation_path(conv_id)
-        conv_path.parent.mkdir(parents=True, exist_ok=True)
-        conv_path.touch(exist_ok=True)
-        chat_store.set_active_conversation(conv_id)
-        print(f">>> on_chat_start: pending_id={conv_id}")
-    else:
-        conv_id = await chat_store.get_active_conversation_id()
-        if not conv_id:
-            conv_id = await chat_store.create_conversation()
-            print(f">>> on_chat_start: 新建对话 conv_id={conv_id}")
-        else:
-            print(f">>> on_chat_start: 复用 active conv_id={conv_id}")
-
-    # on_chat_start 永远不恢复旧消息到 UI。
-    # 旧消息只通过 on_chat_resume（点击侧边栏历史对话）恢复。
-    # 但仍然加载历史到 chat_history 内存（供 LLM 上下文使用）。
-    restored_messages = []
-    conv_path = chat_store._conversation_path(conv_id)
-    if conv_path.exists() and conv_path.stat().st_size > 0:
-        restored = await chat_store.load_history(conv_id)
-        if restored:
-            history = [{"role": m["role"], "content": m["content"]} for m in restored if m.get("role") in ("user", "assistant", "system")]
-            cl.user_session.set("chat_history", history)
+    # on_chat_start 永远不恢复旧消息。新对话 = 空历史。
+    # chat_history 保持为空列表（仅后续注入 system 上下文）。
 
     cl.user_session.set("conversation_id", conv_id)
 
@@ -397,15 +368,13 @@ async def on_chat_start():
         pass
 
     # --- 检查未提取记忆的历史对话 ---
-    # 找最近一个有内容但未提取的对话，后台跑子 agent
+    # 找最近一个有内容的旧对话，后台跑子 agent 提取记忆
     try:
         all_jsonl = sorted(chat_store.base_dir.glob("*.jsonl"))
         for jf in reversed(all_jsonl):
             cid = jf.stem
             if cid == conv_id:
                 continue  # 跳过当前对话
-            if chat_store.is_memory_extracted(cid):
-                continue  # 已提取
             if jf.stat().st_size == 0:
                 continue  # 空文件
             prev_messages = await chat_store.load_history(cid)
