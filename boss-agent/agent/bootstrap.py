@@ -120,18 +120,10 @@ def bootstrap(db: Database, api_key: str, model: str = "qwen-plus", base_url: st
     from agent.planner import Planner
     from agent.executor import Executor
     from services.getjob_client import GetjobClient
-    from rag.job_index import JobVectorIndex
-    from rag.embedding import get_embeddings
-    from functools import partial
 
     registry, skill_loader = create_tool_registry()
     llm_client = LLMClient(api_key=api_key, model=model, base_url=base_url)
     getjob_client = GetjobClient(base_url=getjob_base_url)
-
-    # 向量索引 + embedding 函数
-    job_index = JobVectorIndex()
-    job_index.load()  # 尝试加载已有索引
-    embed_fn = partial(get_embeddings, api_key=api_key, base_url=base_url)
 
     planner = Planner(
         tool_registry=registry,
@@ -149,6 +141,4 @@ def bootstrap(db: Database, api_key: str, model: str = "qwen-plus", base_url: st
         "executor": executor,
         "getjob_client": getjob_client,
         "skill_loader": skill_loader,
-        "job_index": job_index,
-        "embed_fn": embed_fn,
     }

@@ -112,15 +112,6 @@ async def _init_agent(db: Database, api_key: str, base_url: str, model: str) -> 
         cl.user_session.set("skill_loader", components["skill_loader"])
         cl.user_session.set("registry", components["registry"])
 
-        # LightRAG 初始化（异步）
-        job_rag = components.get("job_rag")
-        if job_rag:
-            try:
-                await job_rag.initialize()
-            except Exception as e:
-                logger.warning("JobRAG 初始化失败: %s", e)
-        cl.user_session.set("job_rag", job_rag)
-
         cl.user_session.set("agent_ready", True)
         cl.user_session.set("current_model", model)
 
@@ -137,7 +128,9 @@ async def _init_agent(db: Database, api_key: str, base_url: str, model: str) -> 
                 from chainlit.context import init_ws_context
                 init_ws_context(_cl_context)
                 from services.task_state import TaskStateStore
-                await _push_task_panel(TaskStateStore.get())
+                _db = cl.user_session.get("db")
+                if _db:
+                    await _push_task_panel(TaskStateStore(_db))
             except Exception as e:
                 logger.warning("任务面板推送失败: %s", e)
 
@@ -403,19 +396,19 @@ async def _execute_generic_tool(tool_name: str, params: dict, card_el):
 
     # 注册任务到面板并推送
     task_id = f"{tool_name}-{int(_time.time())}"
-    store = TaskStateStore.get()
+    store = TaskStateStore(db)
     tool = registry.get_tool(tool_name)
-    store.upsert(TaskInfo(
+    await store.upsert(TaskInfo(
         task_id=task_id, name=tool.display_name,
         platform="local", status="running", progress_text="执行中",
     ))
     await _push_task_panel(store)
 
     try:
-        context = {"db": db, "getjob_client": cl.user_session.get("getjob_client"), "job_rag": cl.user_session.get("job_rag")}
+        context = {"db": db, "getjob_client": cl.user_session.get("getjob_client")}
         result = await tool.execute(params, context)
         if isinstance(result, dict) and result.get("action") == "confirm_required":
-            store.update_status(task_id, "failed", "确认参数丢失")
+            await store.update_status(task_id, "failed", "确认参数丢失")
             if card_el:
                 card_el.props["status"] = "failed"
                 card_el.props["result_message"] = "确认参数丢失，请重试"
@@ -424,13 +417,13 @@ async def _execute_generic_tool(tool_name: str, params: dict, card_el):
             return
         success = result.get("success", True) if isinstance(result, dict) else True
         msg = result.get("message", "完成") if isinstance(result, dict) else "完成"
-        store.update_status(task_id, "completed" if success else "failed", msg)
+        await store.update_status(task_id, "completed" if success else "failed", msg)
         if card_el:
             card_el.props["status"] = "completed" if success else "failed"
             card_el.props["result_message"] = msg
             await card_el.update()
     except Exception as e:
-        store.update_status(task_id, "failed", str(e))
+        await store.update_status(task_id, "failed", str(e))
         if card_el:
             card_el.props["status"] = "failed"
             card_el.props["result_message"] = str(e)
@@ -440,9 +433,10 @@ async def _execute_generic_tool(tool_name: str, params: dict, card_el):
 
 async def _push_task_panel(store):
     """推送任务面板更新到前端"""
+    tasks = await store.get_active()
     await cl.send_window_message(json.dumps({
         "type": "task_panel_update",
-        "tasks": store.get_active(),
+        "tasks": tasks,
     }, ensure_ascii=False, default=str))
 
 
@@ -514,7 +508,7 @@ async def _execute_fetch_detail(params: dict, job_ids: list, card_el):
     db = cl.user_session.get("db")
     result = await FetchJobDetailTool().execute(
         {"job_ids": job_ids, "force": params.get("force", False)},
-        {"db": db, "getjob_client": cl.user_session.get("getjob_client"), "job_rag": cl.user_session.get("job_rag")},
+        {"db": db, "getjob_client": cl.user_session.get("getjob_client")},
     )
     if card_el:
         if result.get("success"):
@@ -673,7 +667,7 @@ async def handle_user_message(content: str):
     # 标记 agent 正在处理中（后台任务通知会据此判断是否直接推送 UI）
     cl.user_session.set("agent_busy", True)
 
-    async for event in executor.chat(messages=history, context={"db": db, "llm_client": executor._llm, "getjob_client": cl.user_session.get("getjob_client"), "task_monitor": cl.user_session.get("task_monitor"), "agent_busy_check": lambda: cl.user_session.get("agent_busy", False), "conversation_logger": conv_logger, "job_rag": cl.user_session.get("job_rag")}, system_prompt=system_prompt):
+    async for event in executor.chat(messages=history, context={"db": db, "llm_client": executor._llm, "getjob_client": cl.user_session.get("getjob_client"), "task_monitor": cl.user_session.get("task_monitor"), "agent_busy_check": lambda: cl.user_session.get("agent_busy", False), "conversation_logger": conv_logger}, system_prompt=system_prompt):
         # 收集事件到 trace
         trace_events.append(event.to_dict())
 
@@ -758,7 +752,8 @@ async def handle_user_message(content: str):
         elif event.type == "task_notification":
             # 后台任务通知 → 推送任务面板
             from services.task_state import TaskStateStore
-            await _push_task_panel(TaskStateStore.get())
+            if db:
+                await _push_task_panel(TaskStateStore(db))
 
     # agent 处理完毕
     cl.user_session.set("agent_busy", False)

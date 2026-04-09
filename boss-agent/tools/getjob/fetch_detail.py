@@ -108,8 +108,8 @@ class FetchJobDetailTool(Tool):
         from services.task_state import TaskStateStore, TaskInfo
         import time as _time
         task_id = f"fetch-detail-{int(_time.time())}"
-        store = TaskStateStore.get()
-        store.upsert(TaskInfo(
+        store = TaskStateStore(db)
+        await store.upsert(TaskInfo(
             task_id=task_id, name=f"爬取岗位详情（{len(rows)}条）",
             platform="liepin", status="running",
             progress_text=f"0/{len(rows)}",
@@ -171,19 +171,11 @@ class FetchJobDetailTool(Tool):
 
             # 更新任务进度
             done = success_count + fail_count + skipped_count
-            store.update_progress(task_id, f"{done}/{len(rows)} 成功{success_count} 失败{fail_count}")
+            await store.update_progress(task_id, f"{done}/{len(rows)} 成功{success_count} 失败{fail_count}")
 
         # 标记爬取任务完成
-        store.update_status(task_id, "completed" if success_count > 0 or skipped_count > 0 else "failed",
+        await store.update_status(task_id, "completed" if success_count > 0 or skipped_count > 0 else "failed",
                             f"完成 成功{success_count} 跳过{skipped_count} 失败{fail_count}")
-
-        # 图谱化异步后台执行，不阻塞爬取结果返回
-        job_rag = context.get("job_rag") if isinstance(context, dict) else None
-        if job_rag and job_rag.is_ready and success_count > 0:
-            new_ids = [r["id"] for r in results if r.get("source") == "remote"]
-            if new_ids:
-                import asyncio
-                asyncio.create_task(self._async_rag_insert(db, job_rag, new_ids, store))
 
         return {
             "success": success_count > 0 or skipped_count > 0,
@@ -193,33 +185,3 @@ class FetchJobDetailTool(Tool):
             "failed": fail_count,
             "results": results,
         }
-
-    @staticmethod
-    async def _async_rag_insert(db, job_rag, job_ids: list[int], store) -> None:
-        """后台异步图谱化，独立任务状态。"""
-        from services.task_state import TaskInfo
-        import time as _time
-        task_id = f"rag-insert-{int(_time.time())}"
-        store.upsert(TaskInfo(
-            task_id=task_id, name=f"知识图谱化（{len(job_ids)}条）",
-            platform="rag", status="running", progress_text=f"0/{len(job_ids)}",
-        ))
-        try:
-            ph = ",".join("?" * len(job_ids))
-            rows = await db.execute(
-                f"SELECT id, title, company, city, salary_min, salary_max, url, raw_jd "
-                f"FROM jobs WHERE id IN ({ph})", tuple(job_ids),
-            )
-            done = 0
-            for row in rows:
-                try:
-                    await job_rag.insert_job(dict(row))
-                    done += 1
-                except Exception as e:
-                    logger.warning("图谱化单条失败 id=%s: %s", row.get("id"), e)
-                store.update_progress(task_id, f"{done}/{len(rows)}")
-            store.update_status(task_id, "completed", f"图谱化完成 {done}/{len(rows)}")
-            logger.info("后台图谱化完成: %d/%d", done, len(rows))
-        except Exception as e:
-            store.update_status(task_id, "failed", f"图谱化失败: {e}")
-            logger.error("后台图谱化异常: %s", e)

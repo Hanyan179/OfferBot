@@ -568,22 +568,10 @@ async def api_test_chat(request: Request):
                     try:
                         from services.getjob_client import GetjobClient
                         from services.task_monitor import TaskMonitor
-                        from rag.job_rag import JobRAG
-
-                        if not hasattr(app.state, "job_rag") or app.state.job_rag is None:
-                            _job_rag = JobRAG(
-                                working_dir=str(_project_root / "data" / "lightrag_jobs"),
-                                api_key=api_key, base_url=base_url, model=model, db=db,
-                            )
-                            try:
-                                await _job_rag.initialize()
-                            except Exception as _e:
-                                logger.warning("测试接口 JobRAG 初始化失败: %s", _e)
-                            app.state.job_rag = _job_rag
 
                         result = await tool.execute(tool_args, context={
                             "db": db, "getjob_client": GetjobClient(), "task_monitor": TaskMonitor(),
-                            "agent_busy_check": lambda: False, "job_rag": app.state.job_rag,
+                            "agent_busy_check": lambda: False,
                             "active_toolsets": active_toolsets, "registry": registry,
                         })
                         result_str = _json.dumps(result, ensure_ascii=False, default=str)[:2000] if result else "{}"
@@ -628,8 +616,10 @@ async def api_test_chat(request: Request):
 async def api_get_tasks():
     """返回当前活跃的任务列表（运行中 + 最近完成的）"""
     from services.task_state import TaskStateStore
-    store = TaskStateStore.get()
-    return JSONResponse({"tasks": store.get_active()})
+    db = await _get_db()
+    store = TaskStateStore(db)
+    tasks = await store.get_active()
+    return JSONResponse({"tasks": tasks})
 
 
 @app.post("/api/tasks/{platform}/stop")
@@ -921,11 +911,9 @@ async def api_fetch_job_detail(job_id: int):
     db = await _get_db()
     tool = FetchJobDetailTool()
     client = GetjobClient(load_config().getjob_base_url)
-    # 尝试获取 job_rag
-    job_rag = getattr(app.state, "job_rag", None)
     result = await tool.execute(
         {"job_id": job_id},
-        {"db": db, "getjob_client": client, "job_rag": job_rag},
+        {"db": db, "getjob_client": client},
     )
     await client.close()
     return JSONResponse(result)
@@ -1032,7 +1020,7 @@ async def api_ai_exposure():
     profile_text = "\n".join(profile_parts)
 
     occ_text = "\n".join(
-        f"- {o['title']} (曝光度: {o['exposure']:.2%})" for o in matched_occs
+        f"- {o['title']} (替代率: {o['exposure']:.2%})" for o in matched_occs
     )
 
     high_tasks = "\n".join(
@@ -1047,7 +1035,7 @@ async def api_ai_exposure():
 ## 用户画像
 {profile_text}
 
-## 匹配的 O*NET 职业及 AI 曝光度（来自 Anthropic Economic Index，美国数据）
+## 匹配的 O*NET 职业及 AI 替代率（来自 Anthropic Economic Index，美国数据）
 {occ_text}
 
 ## 该职业中 AI 渗透率最高的任务（最可能被 AI 增强或替代）

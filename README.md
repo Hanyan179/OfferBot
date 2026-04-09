@@ -60,7 +60,6 @@ MooBot 执行：
 - **记忆系统** — MemoryExtractor 子 Agent 异步提取对话中的用户信息，写入记忆画像文件；下次对话自动加载，Agent 越用越懂你
 - **Skills 系统** — Markdown 格式的业务场景剧本（简历生成、面试准备等），动态注入 System Prompt，Agent 按场景执行
 - **多 LLM 支持** — OpenAI 兼容格式，支持阿里云 DashScope / OpenAI / Google Gemini / DeepSeek
-- **RAG 知识库** — LightRAG 知识图谱 + 向量检索，hybrid 模式融合
 - **浏览器自动化** — Playwright 驱动，支持猎聘等平台
 - **Web UI** — Chainlit 对话 + 岗位管理 + 简历管理 + 一键求职
 - **Tool 可扩展** — 继承基类，注册即用（[开发指南](docs/tool-development.md)）
@@ -104,7 +103,7 @@ MooBot 执行：
 ┌──────────────────▼──────────────────────────┐
 │              Storage                         │
 │  SQLite │ 记忆画像 (Markdown) │ Skills (MD)  │
-│  LightRAG 知识图谱 │ 对话历史 (JSONL)         │
+│  对话历史 (JSONL)                            │
 └─────────────────────────────────────────────┘
 ```
 
@@ -180,7 +179,6 @@ export DASHSCOPE_LLM_MODEL="gemini-2.0-flash"
 | `get_user_profile` | 获取用户档案 |
 | `update_user_profile` | 更新用户档案 |
 | `query_jobs` | 岗位查询（SQL + 关键词搜索） |
-| `rag_query` | 知识图谱检索（LightRAG hybrid） |
 | `fetch_job_detail` | 获取岗位详情 |
 | `save_job` | 保存岗位数据 |
 | `save_application` | 记录投递 |
@@ -200,7 +198,6 @@ export DASHSCOPE_LLM_MODEL="gemini-2.0-flash"
 boss-agent/
 ├── agent/          # Agent 核心（Executor, LLM Client, Memory, MemoryExtractor）
 ├── db/             # SQLite 数据库
-├── rag/            # RAG Pipeline（LightRAG 知识图谱 + 向量检索）
 ├── tools/          # Tool 层
 │   ├── data/       #   数据操作（岗位、投递、统计、黑名单、记忆）
 │   ├── ai/         #   AI 分析（JD 解析、匹配）
@@ -218,7 +215,6 @@ boss-agent/
 |---|---|
 | **自建 Agent Loop** | 用户说一句话，模型自己决定调哪些工具、按什么顺序执行——求职场景的任务链不固定，需要 LLM 动态决策 |
 | **OpenAI SDK** | 统一接口兼容多家 LLM（阿里云/OpenAI/Gemini/DeepSeek），用户按预算和效果自己选 |
-| **LightRAG** | 知识图谱 + 向量双模检索，JD 图谱化后支持技能关系匹配、语义问答 |
 | **Playwright** | 招聘平台没有开放 API，只能通过浏览器自动化抓取岗位数据 |
 | **SQLite** | 单用户本地工具，岗位数据、投递记录、用户档案都存本地，不需要服务端数据库 |
 | **Chainlit (fork)** | 对话 UI（流式输出、Markdown、工具调用展示），fork 定制了导航栏和页面嵌入 |

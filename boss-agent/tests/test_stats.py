@@ -85,8 +85,6 @@ class TestStatsEmpty:
         assert stats["total_applications"] == 0
         assert stats["total_replied"] == 0
         assert stats["reply_rate"] == 0.0
-        assert stats["total_interviews"] == 0
-        assert stats["interview_rate"] == 0.0
         assert stats["avg_match_score"] == 0.0
         assert stats["by_company"] == []
         assert stats["by_title"] == []
@@ -103,14 +101,12 @@ class TestStatsWithData:
         stats = result["for_agent"]
         assert stats["total_applications"] == 5
         assert stats["total_replied"] == 0
-        assert stats["total_interviews"] == 0
 
     @pytest.mark.asyncio
     async def test_rates(self, db, seed_data, tool):
         result = await tool.execute({}, {"db": db})
         stats = result["for_agent"]
         assert stats["reply_rate"] == pytest.approx(0.0)
-        assert stats["interview_rate"] == pytest.approx(0.0)
 
     @pytest.mark.asyncio
     async def test_by_company(self, db, seed_data, tool):

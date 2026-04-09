@@ -197,3 +197,19 @@ CREATE TABLE IF NOT EXISTS knowledge_docs (
     chunk_count INTEGER,
     indexed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- ============================================================
+-- 六、任务记录
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
+    platform TEXT DEFAULT 'local',
+    status TEXT DEFAULT 'running',          -- running / completed / failed / timeout
+    progress_text TEXT DEFAULT '',
+    data TEXT DEFAULT '{}',                 -- JSON 扩展字段
+    started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    finished_at TIMESTAMP
+);

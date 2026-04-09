@@ -1,15 +1,19 @@
 """
-全局任务状态 — 供前端任务面板轮询
+任务状态持久化 — SQLite 存储，供前端任务面板和 AI 查询
 
-TaskMonitor 更新状态，前端 /api/tasks 读取。
+只有用户确认执行的操作和后台长任务才写入。
+AI 即时调用的 Tool 不记录。
 """
 
 from __future__ import annotations
 
-import threading
+import json
+import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -40,55 +44,68 @@ class TaskInfo:
 
 
 class TaskStateStore:
-    """线程安全的全局任务状态存储"""
+    """任务状态持久化存储，需要传入 db 实例"""
 
-    _instance: TaskStateStore | None = None
+    def __init__(self, db) -> None:
+        self._db = db
 
-    def __init__(self) -> None:
-        self._tasks: dict[str, TaskInfo] = {}
-        self._lock = threading.Lock()
+    async def upsert(self, task: TaskInfo) -> None:
+        await self._db.execute_write(
+            "INSERT INTO tasks (task_id, name, platform, status, progress_text, data, started_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(task_id) DO UPDATE SET name=?, platform=?, status=?, progress_text=?, data=?",
+            (task.task_id, task.name, task.platform, task.status, task.progress_text,
+             json.dumps(task.data, ensure_ascii=False), task.started_at.isoformat(),
+             task.name, task.platform, task.status, task.progress_text,
+             json.dumps(task.data, ensure_ascii=False)),
+        )
 
-    @classmethod
-    def get(cls) -> TaskStateStore:
-        if cls._instance is None:
-            cls._instance = TaskStateStore()
-        return cls._instance
+    async def update_status(self, task_id: str, status: str, progress_text: str = "") -> None:
+        finished = datetime.now().isoformat() if status in ("completed", "failed", "timeout") else None
+        if progress_text:
+            await self._db.execute_write(
+                "UPDATE tasks SET status=?, progress_text=?, finished_at=? WHERE task_id=?",
+                (status, progress_text, finished, task_id),
+            )
+        else:
+            await self._db.execute_write(
+                "UPDATE tasks SET status=?, finished_at=? WHERE task_id=?",
+                (status, finished, task_id),
+            )
 
-    def upsert(self, task: TaskInfo) -> None:
-        with self._lock:
-            self._tasks[task.task_id] = task
+    async def update_progress(self, task_id: str, text: str) -> None:
+        await self._db.execute_write(
+            "UPDATE tasks SET progress_text=? WHERE task_id=?", (text, task_id),
+        )
 
-    def update_status(self, task_id: str, status: str, progress_text: str = "") -> None:
-        with self._lock:
-            t = self._tasks.get(task_id)
-            if t:
-                t.status = status
-                if progress_text:
-                    t.progress_text = progress_text
-                if status in ("completed", "failed", "timeout"):
-                    t.finished_at = datetime.now()
+    async def get_active(self) -> list[dict]:
+        """运行中 + 最近 30 分钟完成的"""
+        rows = await self._db.execute(
+            "SELECT * FROM tasks WHERE status='running' "
+            "OR (finished_at IS NOT NULL AND finished_at > datetime('now', '-30 minutes')) "
+            "ORDER BY started_at DESC"
+        )
+        return [self._row_to_dict(r) for r in rows]
 
-    def update_progress(self, task_id: str, text: str) -> None:
-        with self._lock:
-            t = self._tasks.get(task_id)
-            if t:
-                t.progress_text = text
+    async def get_all(self, limit: int = 50) -> list[dict]:
+        rows = await self._db.execute(
+            "SELECT * FROM tasks ORDER BY started_at DESC LIMIT ?", (limit,)
+        )
+        return [self._row_to_dict(r) for r in rows]
 
-    def remove(self, task_id: str) -> None:
-        with self._lock:
-            self._tasks.pop(task_id, None)
-
-    def get_all(self) -> list[dict]:
-        with self._lock:
-            return [t.to_dict() for t in self._tasks.values()]
-
-    def get_active(self) -> list[dict]:
-        now = datetime.now()
-        with self._lock:
-            result = []
-            for t in self._tasks.values():
-                # 已完成超过 5 分钟的不返回
-                if t.finished_at and (now - t.finished_at) > timedelta(minutes=5):
-                    continue
-                result.append(t.to_dict())
-            return result
+    @staticmethod
+    def _row_to_dict(r) -> dict:
+        started = datetime.fromisoformat(r["started_at"]) if r.get("started_at") else datetime.now()
+        finished = datetime.fromisoformat(r["finished_at"]) if r.get("finished_at") else None
+        elapsed = (finished or datetime.now()) - started
+        return {
+            "task_id": r["task_id"],
+            "name": r["name"],
+            "platform": r.get("platform", ""),
+            "status": r["status"],
+            "progress_text": r.get("progress_text", ""),
+            "elapsed_s": int(elapsed.total_seconds()),
+            "started_at": r.get("started_at"),
+            "finished_at": r.get("finished_at"),
+            "data": json.loads(r["data"]) if r.get("data") else {},
+        }

@@ -35,7 +35,7 @@ from web.app import app
 # ---------------------------------------------------------------------------
 
 CORE_TOOL_NAMES = {
-    "get_user_profile", "query_jobs", "rag_query", "get_stats",
+    "get_user_profile", "query_jobs", "get_stats",
     "job_count", "get_memory", "search_memory",
     "get_user_cognitive_model", "activate_toolset", "get_data_status",
 }

@@ -14,6 +14,7 @@ EXPECTED_TABLES = [
     "resumes",
     "job_preferences",
     "match_results",
+    "tasks",
 ]
 
 
@@ -43,7 +44,7 @@ class TestSchemaInit:
         rows = await db.execute(
             "SELECT count(*) AS cnt FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
         )
-        assert rows[0]["cnt"] == 8
+        assert rows[0]["cnt"] == 9
 
 
 class TestExecute:

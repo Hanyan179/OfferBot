@@ -1,7 +1,7 @@
 """
 投递统计工具
 
-GetStatsTool: 查询投递统计数据（总数、回复率、面试邀约率、按公司/岗位分布）
+GetStatsTool: 查询投递统计数据（总数、按公司/岗位分布）
 """
 
 from __future__ import annotations
@@ -51,13 +51,7 @@ class GetStatsTool(Tool):
 
         # 已回复数
         total_replied = 0
-
         reply_rate = total_replied / total_applications if total_applications else 0.0
-
-        # 面试邀约数
-        total_interviews = 0
-
-        interview_rate = total_interviews / total_applications if total_applications else 0.0
 
         # 平均匹配度
         rows = await db.execute(
@@ -85,8 +79,6 @@ class GetStatsTool(Tool):
             "total_applications": total_applications,
             "total_replied": total_replied,
             "reply_rate": reply_rate,
-            "total_interviews": total_interviews,
-            "interview_rate": interview_rate,
             "avg_match_score": avg_match_score,
             "by_company": [dict(r) for r in by_company],
             "by_title": [dict(r) for r in by_title],
@@ -94,13 +86,10 @@ class GetStatsTool(Tool):
 
         return {
             "for_ui": {
-                "element_name": "BadgeWall",
                 "cards": [
                     {"label": "总投递", "value": total_applications},
                     {"label": "已回复", "value": total_replied},
                     {"label": "回复率", "value": f"{reply_rate:.0%}"},
-                    {"label": "面试邀约", "value": total_interviews},
-                    {"label": "面试率", "value": f"{interview_rate:.0%}"},
                     {"label": "平均匹配度", "value": f"{avg_match_score:.1f}"},
                 ],
                 "stats": stats,

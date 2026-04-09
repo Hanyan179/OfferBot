@@ -92,8 +92,7 @@ MOCK_CARDS = {
 MOCK_TASKS = [
     {"task_id": "t1", "name": "爬取岗位列表", "platform": "liepin", "status": "running", "progress_text": "32/100", "elapsed_s": 45},
     {"task_id": "t2", "name": "爬取岗位详情（5条）", "platform": "liepin", "status": "running", "progress_text": "2/5", "elapsed_s": 120},
-    {"task_id": "t3", "name": "知识图谱化（3条）", "platform": "rag", "status": "completed", "progress_text": "3/3", "elapsed_s": 72},
-    {"task_id": "t4", "name": "投递打招呼（2条）", "platform": "liepin", "status": "failed", "progress_text": "登录已过期", "elapsed_s": 8},
+    {"task_id": "t3", "name": "投递打招呼（2条）", "platform": "liepin", "status": "failed", "progress_text": "登录已过期", "elapsed_s": 8},
 ]
 
 

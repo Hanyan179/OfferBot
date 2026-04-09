@@ -1,6 +1,6 @@
 """Anthropic Economic Index — 确定性数据匹配。
 
-数据链路：用户岗位(中文) → O*NET 代码 → job_exposure(职业曝光度) + task_penetration(任务渗透率)
+数据链路：用户岗位(中文) → O*NET 代码 → job_exposure(职业替代率) + task_penetration(任务渗透率)
 """
 
 import csv
@@ -79,10 +79,13 @@ def _load_task_penetration() -> dict[str, float]:
     global _task_pen
     if _task_pen is not None:
         return _task_pen
+    cn = _load_task_cn()
     _task_pen = {}
     with open(_DIR / "task_penetration.csv", encoding="utf-8") as f:
         for r in csv.DictReader(f):
-            _task_pen[r["task"].strip().lower()] = float(r["penetration"])
+            task_en = r["task"].strip()
+            task = cn.get(task_en, task_en)
+            _task_pen[task.lower()] = float(r["penetration"])
     return _task_pen
 
 
@@ -90,12 +93,14 @@ def _load_occ_tasks() -> dict[str, list[str]]:
     global _occ_tasks
     if _occ_tasks is not None:
         return _occ_tasks
+    cn = _load_task_cn()
     _occ_tasks = {}
     with open(_DIR / "task_statements.txt", encoding="utf-8") as f:
         reader = csv.DictReader(f, delimiter="\t")
         for r in reader:
             code = r["O*NET-SOC Code"].strip().replace(".00", "")
-            task = r["Task"].strip()
+            task_en = r["Task"].strip()
+            task = cn.get(task_en, task_en)
             _occ_tasks.setdefault(code, []).append(task)
     return _occ_tasks
 
@@ -158,10 +163,9 @@ def match_occupation(user_role: str) -> list[dict]:
 
 
 def get_task_details(occ_codes: list[str], top_high: int = 8, top_low: int = 5) -> dict:
-    """获取指定职业的任务级渗透率数据（自动翻译为中文）。"""
+    """获取指定职业的任务级渗透率数据。"""
     occ_tasks = _load_occ_tasks()
     task_pen = _load_task_penetration()
-    cn = _load_task_cn()
 
     all_tasks = []
     for code in occ_codes:
@@ -170,7 +174,7 @@ def get_task_details(occ_codes: list[str], top_high: int = 8, top_low: int = 5) 
             if pen is None:
                 pen = task_pen.get(task.lower().rstrip("."))
             if pen is not None:
-                all_tasks.append({"task": cn.get(task, task), "penetration": pen})
+                all_tasks.append({"task": task, "penetration": pen})
 
     if not all_tasks:
         return {"high_penetration": [], "low_penetration": [], "total_tasks": 0, "avg_penetration": 0}

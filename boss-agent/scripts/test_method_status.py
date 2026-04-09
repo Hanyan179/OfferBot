@@ -60,19 +60,12 @@ SCENARIOS = [
         "status_tag": "🔧",
     },
 
-    # === S3: 知识检索 ===
+    # === S3: 数据查询 ===
     {
         "id": "S3-1",
         "name": "query_jobs",
         "message": "帮我查询数据库中上海的岗位",
         "expected_tools": ["query_jobs"],
-        "status_tag": "✅",
-    },
-    {
-        "id": "S3-2",
-        "name": "rag_query",
-        "message": "用知识图谱搜索 AI Agent 相关的岗位信息",
-        "expected_tools": ["rag_query"],
         "status_tag": "✅",
     },
 
