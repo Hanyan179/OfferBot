@@ -74,7 +74,6 @@ boss-agent/data/conversations/
 boss-agent/data/记忆画像/
 boss-agent/data/traces/
 boss-agent/tools/data/traces/
-boss-agent/data/lightrag_jobs/
 boss-agent/data/job_index/
 boss-agent/boss-agent/
 cli
