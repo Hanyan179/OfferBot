@@ -384,7 +384,6 @@ async def on_action_card_submit(action: cl.Action):
     else:
         # 通用路径：通过 tool_name 直接调 Tool，结果进任务面板
         tool_name = payload.get("tool_name")
-        import pathlib; pathlib.Path("/tmp/moobot_dispatch.log").write_text(f"card_type={card_type}\ntool_name={tool_name}\nparams={params}\npayload_keys={list(payload.keys())}\n")
         await _execute_generic_tool(tool_name or card_type, params, card_el)
 
 
@@ -415,8 +414,7 @@ async def _execute_generic_tool(tool_name: str, params: dict, card_el):
     try:
         context = {"db": db, "getjob_client": cl.user_session.get("getjob_client"), "job_rag": cl.user_session.get("job_rag")}
         result = await tool.execute(params, context)
-        logger.info("_execute_generic_tool: tool=%s params=%s result=%s", tool_name, params, result)
-        import pathlib; pathlib.Path("/tmp/moobot_generic.log").write_text(f"tool={tool_name}\nparams={params}\nresult={result}\n")
+        logger.info("_execute_generic_tool: tool=%s result=%s", tool_name, result)
         # confirm_required 不应该出现在这里，但防御一下
         if isinstance(result, dict) and result.get("action") == "confirm_required":
             if card_el:
