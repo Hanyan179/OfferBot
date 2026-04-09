@@ -22,6 +22,10 @@ class FetchJobDetailTool(Tool):
         return "fetch_job_detail"
 
     @property
+    def toolset(self) -> str:
+        return "crawl"
+
+    @property
     def display_name(self) -> str:
         return "获取岗位详情"
 
@@ -76,8 +80,17 @@ class FetchJobDetailTool(Tool):
         if not job_ids:
             return {"success": False, "error": "请提供 job_id 或 job_ids"}
 
-        # 限制批量数量
-        job_ids = job_ids[:10]
+        # 强转为 int，过滤无效值（AI 可能传字符串、浮点数等）
+        clean_ids = []
+        for v in job_ids[:10]:
+            try:
+                clean_ids.append(int(v))
+            except (ValueError, TypeError):
+                pass
+        job_ids = clean_ids
+
+        if not job_ids:
+            return {"success": False, "error": "job_ids 中没有有效的整数 ID"}
 
         force = params.get("force", False)
 

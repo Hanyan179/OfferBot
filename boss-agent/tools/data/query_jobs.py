@@ -188,9 +188,7 @@ class QueryJobsTool(Tool):
                 "has_rag": bool(r.get("has_rag")),
             })
 
-        # ---- 构建 for_agent（极简摘要，不含具体岗位信息）----
-        # AI 不需要看岗位列表，只需要知道查到了多少、大致分布
-        # 用户提到具体岗位时，AI 通过序号从 session 中的 id_map 定位
+        # ---- 构建 for_agent（摘要 + id_map）----
         cities = Counter(j["city"].split("-")[0] for j in ui_jobs if j["city"])
         top_cities = ", ".join(f"{c}({n})" for c, n in cities.most_common(3))
         salaries = [j for j in ui_jobs if j["salary"] != "面议"]
@@ -200,7 +198,27 @@ class QueryJobsTool(Tool):
         else:
             salary_summary = "薪资未知"
 
-        return {
+        # id_map: 序号→{id, title}，供 AI 定位具体岗位
+        id_map = {j["seq"]: {"id": j["id"], "title": j["title"]} for j in ui_jobs}
+        # 缺 JD 的岗位 ID 列表，供 AI 直接传给 fetch_job_detail
+        missing_jd_ids = [j["id"] for j in ui_jobs if not j["has_jd"]]
+
+        agent_data = {
+            "displayed": len(ui_jobs),
+            "total_matched": total_matched,
+            "summary": f"已在 UI 展示 {len(ui_jobs)} 条岗位（共匹配 {total_matched} 条）。{top_cities}。{salary_summary}。",
+            "id_map": id_map,
+            "note": "岗位列表已展示给用户，无需复述。用户提到具体岗位时通过 id_map 定位。",
+        }
+        if missing_jd_ids:
+            agent_data["missing_jd_ids"] = missing_jd_ids
+            agent_data["missing_jd_count"] = len(missing_jd_ids)
+            if len(missing_jd_ids) <= 10:
+                agent_data["hint"] = f"有 {len(missing_jd_ids)} 个岗位缺 JD，可直接用 fetch_job_detail(job_ids={missing_jd_ids}) 批量获取。"
+            else:
+                agent_data["hint"] = f"有 {len(missing_jd_ids)} 个岗位缺 JD，数据较多，建议先抓取前 10 条：fetch_job_detail(job_ids={missing_jd_ids[:10]})"
+
+        result = {
             "success": True,
             "for_ui": {
                 "element_name": "JobList",
@@ -208,10 +226,8 @@ class QueryJobsTool(Tool):
                 "total_matched": total_matched,
                 "showing": len(ui_jobs),
             },
-            "for_agent": {
-                "displayed": len(ui_jobs),
-                "total_matched": total_matched,
-                "summary": f"已在 UI 展示 {len(ui_jobs)} 条岗位（共匹配 {total_matched} 条）。{top_cities}。",
-                "note": "岗位列表已展示给用户，无需复述。用户提到具体岗位时再响应。",
-            },
+            "for_agent": agent_data,
         }
+        if missing_jd_ids:
+            result["_activate_toolsets"] = ["crawl"]
+        return result

@@ -23,6 +23,10 @@ class PlatformStatsTool(Tool):
         return "platform_stats"
 
     @property
+    def toolset(self) -> str:
+        return "admin"
+
+    @property
     def display_name(self) -> str:
         return "平台投递统计"
 

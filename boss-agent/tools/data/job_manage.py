@@ -68,50 +68,44 @@ class DeleteJobsTool(Tool):
     async def execute(self, params: dict, context: Any) -> dict:
         db: Database = context["db"]
 
-        # 清空全部
-        if params.get("delete_all"):
-            count_rows = await db.execute("SELECT COUNT(*) as cnt FROM jobs")
-            count = count_rows[0]["cnt"]
-            await db.execute_write("DELETE FROM jobs")
-            return {
-                "success": True,
-                "deleted": count,
-                "message": f"已清空全部 {count} 条岗位数据",
-            }
+        # 通用确认机制：_confirmed=True 时直接执行
+        confirmed = params.pop("_confirmed", False)
 
         # 构建条件
         clauses: list[str] = []
         values: list[Any] = []
 
-        platform = params.get("platform")
-        if platform and platform != "all":
-            clauses.append("platform = ?")
-            values.append(platform)
+        if params.get("delete_all"):
+            pass
+        else:
+            platform = params.get("platform")
+            if platform and platform != "all":
+                clauses.append("platform = ?")
+                values.append(platform)
 
-        days = params.get("older_than_days")
-        if days is not None:
-            clauses.append("discovered_at < datetime('now', ?)")
-            values.append(f"-{days} days")
+            days = params.get("older_than_days")
+            if days is not None:
+                clauses.append("discovered_at < datetime('now', ?)")
+                values.append(f"-{days} days")
 
-        keyword = params.get("keyword")
-        if keyword:
-            clauses.append("title LIKE ?")
-            values.append(f"%{keyword}%")
+            keyword = params.get("keyword")
+            if keyword:
+                clauses.append("title LIKE ?")
+                values.append(f"%{keyword}%")
 
-        city = params.get("city")
-        if city:
-            clauses.append("city LIKE ?")
-            values.append(f"%{city}%")
+            city = params.get("city")
+            if city:
+                clauses.append("city LIKE ?")
+                values.append(f"%{city}%")
 
-        if not clauses:
-            return {
-                "success": False,
-                "error": "请至少指定一个筛选条件（platform、older_than_days、keyword、city），或使用 delete_all=true 清空全部",
-            }
+            if not clauses:
+                return {
+                    "success": False,
+                    "error": "请至少指定一个筛选条件（platform、older_than_days、keyword、city），或使用 delete_all=true 清空全部",
+                }
 
-        where = " WHERE " + " AND ".join(clauses)
+        where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
 
-        # 先统计要删多少
         count_rows = await db.execute(
             f"SELECT COUNT(*) as cnt FROM jobs{where}", tuple(values)
         )
@@ -120,13 +114,29 @@ class DeleteJobsTool(Tool):
         if count == 0:
             return {"success": True, "deleted": 0, "message": "没有匹配的数据需要删除"}
 
-        # 执行删除
-        await db.execute_write(f"DELETE FROM jobs{where}", tuple(values))
+        # 已确认 → 执行删除
+        if confirmed:
+            await db.execute_write(f"DELETE FROM jobs{where}", tuple(values))
+            return {"success": True, "deleted": count, "message": f"已删除 {count} 条岗位数据"}
+
+        # 未确认 → 返回确认卡片
+        desc_parts = []
+        if params.get("delete_all"): desc_parts.append("全部岗位")
+        if params.get("platform"): desc_parts.append(f"平台={params['platform']}")
+        if params.get("older_than_days"): desc_parts.append(f"{params['older_than_days']}天前")
+        if params.get("keyword"): desc_parts.append(f"关键词={params['keyword']}")
+        if params.get("city"): desc_parts.append(f"城市={params['city']}")
 
         return {
-            "success": True,
-            "deleted": count,
-            "message": f"已删除 {count} 条岗位数据",
+            "action": "confirm_required",
+            "card_type": "delete_jobs",
+            "tool_name": "delete_jobs",
+            "title": "确认删除岗位",
+            "description": f"即将删除 {count} 条岗位数据（{'、'.join(desc_parts)}）",
+            "confirm_text": f"确认删除 {count} 条",
+            "cancel_text": "取消",
+            "params": {**params, "_confirmed": True},
+            "count": count,
         }
 
 

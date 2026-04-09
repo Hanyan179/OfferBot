@@ -2,9 +2,43 @@
   <h1>📋 岗位数据</h1>
   <p id="jobSummary">加载中...</p>
 </div>
+
+<!-- 检索栏 -->
+<div class="card" style="padding:12px 16px;margin-bottom:12px;">
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+    <input id="fKeyword" type="text" placeholder="搜索岗位/公司" style="flex:1;min-width:160px;padding:7px 12px;border:1px solid rgba(0,0,0,.12);border-radius:8px;font-size:13px;background:transparent;color:inherit;outline:none;">
+    <select id="fCity" style="padding:7px 12px;border:1px solid rgba(0,0,0,.12);border-radius:8px;font-size:13px;background:transparent;color:inherit;min-width:100px;">
+      <option value="">全部城市</option>
+    </select>
+    <div style="display:flex;align-items:center;gap:4px;">
+      <input id="fSalaryMin" type="number" placeholder="薪资下限" style="width:90px;padding:7px 10px;border:1px solid rgba(0,0,0,.12);border-radius:8px;font-size:13px;background:transparent;color:inherit;outline:none;">
+      <span style="font-size:12px;color:#86868b;">-</span>
+      <input id="fSalaryMax" type="number" placeholder="薪资上限" style="width:90px;padding:7px 10px;border:1px solid rgba(0,0,0,.12);border-radius:8px;font-size:13px;background:transparent;color:inherit;outline:none;">
+      <span style="font-size:12px;color:#86868b;">K</span>
+    </div>
+    <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;white-space:nowrap;">
+      <input id="fHasJd" type="checkbox" style="accent-color:#4D96FF;"> 仅有JD
+    </label>
+    <button onclick="doSearch()" class="btn btn-primary btn-sm" style="padding:7px 18px;border-radius:8px;font-size:13px;font-weight:600;background:#4D96FF;color:#fff;border:none;cursor:pointer;">搜索</button>
+    <button onclick="resetSearch()" class="btn btn-secondary btn-sm" style="padding:7px 12px;border-radius:8px;font-size:13px;border:1px solid rgba(0,0,0,.12);background:transparent;color:inherit;cursor:pointer;">重置</button>
+  </div>
+</div>
+
+<style>
+  th.sortable { cursor:pointer; user-select:none; }
+  th.sortable:hover { color:#4D96FF; }
+  th.sortable .arrow { font-size:10px; margin-left:2px; opacity:0.3; }
+  th.sortable.active .arrow { opacity:1; color:#4D96FF; }
+</style>
+
 <div class="card" style="padding:0;overflow:hidden;">
   <table>
-    <thead><tr><th>岗位</th><th>公司</th><th>薪资</th><th>城市</th><th>匹配度</th></tr></thead>
+    <thead><tr>
+      <th>岗位</th><th>公司</th>
+      <th class="sortable" data-sort="salary_min" onclick="toggleSort('salary_min')">薪资 <span class="arrow">▼</span></th>
+      <th>城市</th>
+      <th class="sortable" data-sort="match_score" onclick="toggleSort('match_score')">匹配度 <span class="arrow">▼</span></th>
+    </tr></thead>
     <tbody id="jobBody">
       <tr><td colspan="5" class="empty">加载中...</td></tr>
     </tbody>
@@ -15,17 +49,82 @@
 <script>
 const PAGE_SIZE = 30;
 let currentPage = 1;
+let currentSort = '';
+let currentOrder = 'desc';
+
+function getFilters() {
+  return {
+    keyword: document.getElementById('fKeyword').value.trim(),
+    city: document.getElementById('fCity').value,
+    salary_min: parseInt(document.getElementById('fSalaryMin').value) || 0,
+    salary_max: parseInt(document.getElementById('fSalaryMax').value) || 0,
+    has_jd: document.getElementById('fHasJd').checked,
+  };
+}
+
+function toggleSort(field) {
+  if (currentSort === field) {
+    currentOrder = currentOrder === 'desc' ? 'asc' : 'desc';
+  } else {
+    currentSort = field;
+    currentOrder = 'desc';
+  }
+  updateSortUI();
+  loadJobs(1);
+}
+
+function updateSortUI() {
+  document.querySelectorAll('th.sortable').forEach(th => {
+    const arrow = th.querySelector('.arrow');
+    if (th.dataset.sort === currentSort) {
+      th.classList.add('active');
+      arrow.textContent = currentOrder === 'asc' ? '▲' : '▼';
+    } else {
+      th.classList.remove('active');
+      arrow.textContent = '▼';
+    }
+  });
+}
+
+function doSearch() { loadJobs(1); }
+
+function resetSearch() {
+  document.getElementById('fKeyword').value = '';
+  document.getElementById('fCity').value = '';
+  document.getElementById('fSalaryMin').value = '';
+  document.getElementById('fSalaryMax').value = '';
+  document.getElementById('fHasJd').checked = false;
+  currentSort = ''; currentOrder = 'desc';
+  updateSortUI();
+  loadJobs(1);
+}
 
 async function loadJobs(page) {
   currentPage = page;
   const tbody = document.getElementById('jobBody');
   tbody.innerHTML = '<tr><td colspan="5" class="empty">加载中...</td></tr>';
   try {
-    const resp = await fetch(`/api/jobs?page=${page}&size=${PAGE_SIZE}`);
+    const f = getFilters();
+    const params = new URLSearchParams({page, size: PAGE_SIZE});
+    if (f.keyword) params.set('keyword', f.keyword);
+    if (f.city) params.set('city', f.city);
+    if (f.salary_min > 0) params.set('salary_min', f.salary_min);
+    if (f.salary_max > 0) params.set('salary_max', f.salary_max);
+    if (f.has_jd) params.set('has_jd', 'true');
+    if (currentSort) { params.set('sort', currentSort); params.set('order', currentOrder); }
+
+    const resp = await fetch(`/api/jobs?${params}`);
     const data = await resp.json();
     document.getElementById('jobSummary').textContent = `共 ${data.total} 个岗位`;
+
+    const sel = document.getElementById('fCity');
+    if (sel.options.length <= 1 && data.cities && data.cities.length) {
+      data.cities.forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = c; sel.appendChild(o); });
+    }
+
     if (!data.jobs.length) {
-      tbody.innerHTML = '<tr><td colspan="5" class="empty">暂无岗位数据</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="5" class="empty">暂无匹配岗位</td></tr>';
+      document.getElementById('jobPagination').innerHTML = '';
       return;
     }
     tbody.innerHTML = data.jobs.map(j => {
@@ -59,5 +158,7 @@ function renderPagination(page, totalPages) {
 }
 
 function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+document.getElementById('fKeyword').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
 loadJobs(1);
 </script>

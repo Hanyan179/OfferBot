@@ -16,6 +16,10 @@ class PlatformDeliverTool(Tool):
         return "platform_deliver"
 
     @property
+    def toolset(self) -> str:
+        return "deliver"
+
+    @property
     def display_name(self) -> str:
         return "投递打招呼"
 

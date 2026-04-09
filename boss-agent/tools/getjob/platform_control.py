@@ -35,6 +35,14 @@ class PlatformStartTaskTool(Tool):
         return "platform_start_task"
 
     @property
+    def toolset(self) -> str:
+        return "crawl"
+
+    @property
+    def toolset(self) -> str:
+        return "crawl"
+
+    @property
     def display_name(self) -> str:
         return "启动平台任务"
 
@@ -120,6 +128,14 @@ class PlatformStopTaskTool(Tool):
     @property
     def name(self) -> str:
         return "platform_stop_task"
+
+    @property
+    def toolset(self) -> str:
+        return "crawl"
+
+    @property
+    def toolset(self) -> str:
+        return "crawl"
 
     @property
     def display_name(self) -> str:

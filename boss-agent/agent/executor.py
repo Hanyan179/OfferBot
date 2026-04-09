@@ -180,21 +180,8 @@ class Executor:
                 return
 
             # 把 assistant 消息（含 tool_calls）加入历史
-            assistant_msg: dict[str, Any] = {"role": "assistant"}
-            if text_content:
-                assistant_msg["content"] = text_content
-            assistant_msg["tool_calls"] = [
-                {
-                    "id": tc.id,
-                    "type": "function",
-                    "function": {
-                        "name": tc.function.name,
-                        "arguments": tc.function.arguments,
-                    },
-                }
-                for tc in tool_calls
-            ]
-            full_messages.append(assistant_msg)
+            # 使用 to_dict() 保留 Gemini 的 thought_signature（缺失会导致 400 错误）
+            full_messages.append(response.to_dict())
 
             # 执行每个工具调用
             for tc in tool_calls:
@@ -217,14 +204,24 @@ class Executor:
                 try:
                     result_parsed = json.loads(result_content)
                     if isinstance(result_parsed, dict):
+                        # Tool 返回值驱动：自动激活 toolset
+                        toolsets_to_activate = result_parsed.pop("_activate_toolsets", None)
+                        if toolsets_to_activate and isinstance(toolsets_to_activate, list):
+                            for ts in toolsets_to_activate:
+                                context["active_toolsets"].add(ts)
+
                         if result_parsed.get("action") == "confirm_required":
                             yield AgentEvent.action_card(result_parsed)
                             is_action_card = True
-                            result_content = json.dumps({
-                                "action": "confirm_required",
-                                "card_type": result_parsed.get("card_type"),
-                                "message": "已生成操作卡片，等待用户在 UI 上确认后执行。你可以继续对话。"
-                            }, ensure_ascii=False)
+                            # action_card 是异步任务，不需要 AI 等待
+                            # 直接告诉 LLM 任务已提交，立即结束本轮 loop
+                            card_type = result_parsed.get("card_type", "unknown")
+                            yield AgentEvent(
+                                type="assistant_message",
+                                data={"content": f"已为你生成操作卡片，请在上方确认参数后点击执行。任务启动后可以在右侧面板查看进度，我们可以继续聊其他的 😊"},
+                                timestamp=datetime.now(),
+                            )
+                            return  # 立即结束 loop，不让 LLM 继续轮询
                         elif "for_ui" in result_parsed and "for_agent" in result_parsed:
                             # 结果分流：for_ui 推前端渲染，for_agent 给 LLM
                             yield AgentEvent.ui_render({

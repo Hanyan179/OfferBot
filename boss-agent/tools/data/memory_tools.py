@@ -260,7 +260,7 @@ class SaveMemoryTool(Tool):
 
 
 class GetMemoryTool(Tool):
-    """读取指定分类的记忆文件内容。"""
+    """读取指定分类的记忆文件内容，支持批量。"""
 
     @property
     def name(self) -> str:
@@ -272,7 +272,7 @@ class GetMemoryTool(Tool):
 
     @property
     def description(self) -> str:
-        return "读取指定分类的所有记忆内容。"
+        return "读取记忆内容。支持单个分类(category)或多个分类(categories数组)，一次返回所有需要的记忆。"
 
     @property
     def category(self) -> str:
@@ -289,23 +289,37 @@ class GetMemoryTool(Tool):
             "properties": {
                 "category": {
                     "type": "string",
-                    "description": "记忆分类名称",
+                    "description": "单个记忆分类名称",
+                },
+                "categories": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "多个记忆分类名称（批量读取）",
                 },
             },
-            "required": ["category"],
         }
 
     async def execute(self, params: dict, context: Any) -> dict:
-        category = params["category"]
+        cats = params.get("categories") or []
+        if not cats and params.get("category"):
+            cats = [params["category"]]
+        if not cats:
+            return {"error": "请提供 category 或 categories"}
+
         memory_dir = _get_memory_dir(context)
-        file_path = _get_file_path(category, memory_dir)
+        results = {}
+        for cat in cats:
+            file_path = _get_file_path(cat, memory_dir)
+            if file_path.exists():
+                content = file_path.read_text(encoding="utf-8")
+                results[cat] = {"content": content, "entries": len(_parse_sections(content))}
+            else:
+                results[cat] = {"content": "", "entries": 0}
 
-        if not file_path.exists():
-            return {"category": category, "content": "", "entries": 0}
-
-        content = file_path.read_text(encoding="utf-8")
-        sections = _parse_sections(content)
-        return {"category": category, "content": content, "entries": len(sections)}
+        if len(results) == 1:
+            cat = cats[0]
+            return {"category": cat, **results[cat]}
+        return {"categories": results, "total": len(results)}
 
 
 class SearchMemoryTool(Tool):

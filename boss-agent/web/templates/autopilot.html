@@ -1,0 +1,407 @@
+{% extends "base.html" %}
+{% block extra_head %}
+<style>
+.autopilot-hero {
+  text-align: center;
+  padding: 40px 20px 32px;
+}
+.autopilot-hero h1 { font-size: 28px; font-weight: 700; letter-spacing: -.03em; }
+.autopilot-hero p { font-size: 15px; color: #86868b; margin-top: 8px; max-width: 520px; margin-left: auto; margin-right: auto; }
+
+/* 状态检查面板 */
+.preflight { margin-bottom: 24px; }
+.check-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 18px; background: #fff; border-radius: 12px;
+  border: 1px solid rgba(0,0,0,.04); margin-bottom: 8px;
+  transition: all .2s;
+}
+.check-icon { font-size: 20px; width: 28px; text-align: center; flex-shrink: 0; }
+.check-info { flex: 1; }
+.check-title { font-size: 14px; font-weight: 600; }
+.check-desc { font-size: 12px; color: #86868b; margin-top: 2px; }
+.check-status { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 99px; }
+.status-checking { background: #f3f4f6; color: #6b7280; }
+.status-ok { background: #d1fae5; color: #065f46; }
+.status-missing { background: #fee2e2; color: #991b1b; }
+.status-warn { background: #fef3c7; color: #92400e; }
+
+/* 启动按钮 */
+.launch-section { text-align: center; margin: 32px 0; }
+.btn-launch {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 14px 36px; border-radius: 14px; font-size: 16px; font-weight: 600;
+  background: linear-gradient(135deg, #007aff, #5856d6); color: #fff;
+  border: none; cursor: pointer; transition: all .2s;
+  box-shadow: 0 4px 14px rgba(0,122,255,.3);
+}
+.btn-launch:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(0,122,255,.4); }
+.btn-launch:disabled { opacity: .5; cursor: not-allowed; transform: none; box-shadow: none; }
+
+/* 进度时间线 */
+.timeline { margin-top: 24px; display: none; }
+.timeline.active { display: block; }
+.tl-step {
+  display: flex; gap: 16px; padding-bottom: 20px;
+  position: relative;
+}
+.tl-step:not(:last-child)::before {
+  content: ''; position: absolute; left: 15px; top: 36px; bottom: 0;
+  width: 2px; background: #e5e7eb;
+}
+.tl-step.done:not(:last-child)::before { background: #34d399; }
+.tl-step.running:not(:last-child)::before { background: #93c5fd; }
+.tl-dot {
+  width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; background: #f3f4f6; color: #9ca3af;
+  transition: all .3s;
+}
+.tl-step.done .tl-dot { background: #d1fae5; color: #065f46; }
+.tl-step.running .tl-dot { background: #dbeafe; color: #1e40af; animation: pulse 1.5s infinite; }
+.tl-step.error .tl-dot { background: #fee2e2; color: #991b1b; }
+.tl-body { flex: 1; }
+.tl-title { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+.tl-detail { font-size: 13px; color: #6b7280; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .6; }
+}
+
+/* 结果区 */
+.results-section { display: none; margin-top: 24px; }
+.results-section.active { display: block; }
+.match-card {
+  display: flex; align-items: center; gap: 16px;
+  padding: 16px 18px; background: #fff; border-radius: 12px;
+  border: 1px solid rgba(0,0,0,.04); margin-bottom: 8px;
+  transition: all .15s;
+}
+.match-card:hover { border-color: rgba(0,122,255,.3); }
+.match-rank {
+  width: 36px; height: 36px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; font-weight: 700; flex-shrink: 0;
+}
+.rank-1 { background: #fef3c7; color: #92400e; }
+.rank-2 { background: #e0e7ff; color: #3730a3; }
+.rank-3 { background: #d1fae5; color: #065f46; }
+.rank-default { background: #f3f4f6; color: #6b7280; }
+.match-info { flex: 1; min-width: 0; }
+.match-title { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.match-meta { font-size: 12px; color: #86868b; margin-top: 2px; }
+.match-score {
+  font-size: 20px; font-weight: 700; color: #007aff; flex-shrink: 0;
+}
+.match-link { font-size: 12px; color: #007aff; text-decoration: none; flex-shrink: 0; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="autopilot-hero">
+  <h1>🚀 一键智能求职</h1>
+  <p>基于你的简历画像，自动搜索、爬取、匹配，找到最适合你的岗位</p>
+</div>
+
+<!-- 预检面板 -->
+<div class="card preflight">
+  <h3 style="font-size:15px;font-weight:600;margin-bottom:14px;">📋 启动前检查</h3>
+  <div class="check-item" id="ck-resume">
+    <div class="check-icon">📄</div>
+    <div class="check-info">
+      <div class="check-title">用户画像 / 简历</div>
+      <div class="check-desc" id="ck-resume-desc">检查中...</div>
+    </div>
+    <span class="check-status status-checking" id="ck-resume-status">检查中</span>
+  </div>
+  <div class="check-item" id="ck-service">
+    <div class="check-icon">🖥️</div>
+    <div class="check-info">
+      <div class="check-title">getjob 爬取服务</div>
+      <div class="check-desc" id="ck-service-desc">检查中...</div>
+    </div>
+    <span class="check-status status-checking" id="ck-service-status">检查中</span>
+  </div>
+  <div class="check-item" id="ck-login">
+    <div class="check-icon">🔑</div>
+    <div class="check-info">
+      <div class="check-title">猎聘登录状态</div>
+      <div class="check-desc" id="ck-login-desc">检查中...</div>
+    </div>
+    <span class="check-status status-checking" id="ck-login-status">检查中</span>
+  </div>
+  <div class="check-item" id="ck-jobs">
+    <div class="check-icon">📊</div>
+    <div class="check-info">
+      <div class="check-title">本地岗位数据</div>
+      <div class="check-desc" id="ck-jobs-desc">检查中...</div>
+    </div>
+    <span class="check-status status-checking" id="ck-jobs-status">检查中</span>
+  </div>
+</div>
+
+<!-- 启动按钮 -->
+<div class="launch-section">
+  <button class="btn-launch" id="btn-launch" disabled onclick="launchAutopilot()">
+    🚀 开始一键求职
+  </button>
+  <p style="font-size:12px;color:#86868b;margin-top:10px;" id="launch-hint">正在检查环境...</p>
+</div>
+
+<!-- 进度时间线 -->
+<div class="card timeline" id="timeline">
+  <h3 style="font-size:15px;font-weight:600;margin-bottom:16px;">⏱️ 执行进度</h3>
+  <div class="tl-step" id="tl-1">
+    <div class="tl-dot">1</div>
+    <div class="tl-body">
+      <div class="tl-title">解析用户画像</div>
+      <div class="tl-detail" id="tl-1-detail">等待中...</div>
+    </div>
+  </div>
+  <div class="tl-step" id="tl-2">
+    <div class="tl-dot">2</div>
+    <div class="tl-body">
+      <div class="tl-title">构建搜索条件</div>
+      <div class="tl-detail" id="tl-2-detail">等待中...</div>
+    </div>
+  </div>
+  <div class="tl-step" id="tl-3">
+    <div class="tl-dot">3</div>
+    <div class="tl-body">
+      <div class="tl-title">检查本地数据</div>
+      <div class="tl-detail" id="tl-3-detail">等待中...</div>
+    </div>
+  </div>
+  <div class="tl-step" id="tl-4">
+    <div class="tl-dot">4</div>
+    <div class="tl-body">
+      <div class="tl-title">程序化过滤</div>
+      <div class="tl-detail" id="tl-4-detail">等待中...</div>
+    </div>
+  </div>
+  <div class="tl-step" id="tl-5">
+    <div class="tl-dot">5</div>
+    <div class="tl-body">
+      <div class="tl-title">JD 覆盖率检查</div>
+      <div class="tl-detail" id="tl-5-detail">等待中...</div>
+    </div>
+  </div>
+  <div class="tl-step" id="tl-6">
+    <div class="tl-dot">6</div>
+    <div class="tl-body">
+      <div class="tl-title">量化匹配 & Top N</div>
+      <div class="tl-detail" id="tl-6-detail">等待中...</div>
+    </div>
+  </div>
+</div>
+
+<!-- 结果区 -->
+<div class="card results-section" id="results">
+  <h3 style="font-size:15px;font-weight:600;margin-bottom:16px;">🏆 最匹配岗位</h3>
+  <div id="results-list"></div>
+  <div style="text-align:center;margin-top:16px;">
+    <a href="/chat" class="btn btn-primary">💬 去对话页深入分析</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const API = '';
+let preflightOk = { resume: false, service: false, login: false };
+let profileData = null;
+
+// ---- 预检 ----
+async function runPreflight() {
+  await Promise.all([checkResume(), checkService(), checkJobs()]);
+  updateLaunchBtn();
+}
+
+async function checkResume() {
+  try {
+    const r = await fetch(`${API}/api/resume`);
+    const d = await r.json();
+    const el = document.getElementById('ck-resume-status');
+    const desc = document.getElementById('ck-resume-desc');
+    const resume = d.resume;
+    if (resume && resume.name) {
+      profileData = resume;
+      el.textContent = '已就绪';
+      el.className = 'check-status status-ok';
+      const parts = [];
+      if (resume.name) parts.push(resume.name);
+      if (resume.target_cities && resume.target_cities.length) parts.push(resume.target_cities[0]);
+      if (resume.current_role) parts.push(resume.current_role);
+      if (resume.target_roles && resume.target_roles.length) parts.push('目标: ' + resume.target_roles.slice(0,2).join('/'));
+      desc.textContent = parts.join(' · ');
+      preflightOk.resume = true;
+    } else {
+      el.textContent = '未上传';
+      el.className = 'check-status status-missing';
+      desc.innerHTML = '请先 <a href="/resume" style="color:#007aff">上传简历</a>';
+    }
+  } catch(e) {
+    setCheckError('ck-resume', '检查失败');
+  }
+}
+
+async function checkService() {
+  try {
+    const r = await fetch(`${API}/api/tasks`);
+    const d = await r.json();
+    const el = document.getElementById('ck-service-status');
+    const desc = document.getElementById('ck-service-desc');
+    // tasks API 能响应说明 agent 在线，但 getjob 服务需要单独检查
+    el.textContent = 'Agent 在线';
+    el.className = 'check-status status-ok';
+    desc.textContent = 'Agent 服务正常运行';
+    preflightOk.service = true;
+
+    // 检查猎聘登录（通过 chat API 间接检查）
+    const loginEl = document.getElementById('ck-login-status');
+    const loginDesc = document.getElementById('ck-login-desc');
+    loginEl.textContent = '需在对话中确认';
+    loginEl.className = 'check-status status-warn';
+    loginDesc.textContent = 'AI 会在流程中自动检查并引导登录';
+    preflightOk.login = true; // AI 会处理
+  } catch(e) {
+    setCheckError('ck-service', '服务不可达');
+    setCheckError('ck-login', '无法检查');
+  }
+}
+
+async function checkJobs() {
+  try {
+    const r = await fetch(`${API}/api/jobs?page=1&size=1`);
+    const d = await r.json();
+    const el = document.getElementById('ck-jobs-status');
+    const desc = document.getElementById('ck-jobs-desc');
+    const total = d.total || 0;
+    if (total > 0) {
+      el.textContent = `${total} 条`;
+      el.className = 'check-status status-ok';
+      desc.textContent = `本地已有 ${total} 条岗位数据，可直接匹配或增量爬取`;
+    } else {
+      el.textContent = '暂无数据';
+      el.className = 'check-status status-warn';
+      desc.textContent = '将在流程中自动爬取';
+    }
+  } catch(e) {
+    setCheckError('ck-jobs', '检查失败');
+  }
+}
+
+function setCheckError(prefix, msg) {
+  document.getElementById(prefix + '-status').textContent = msg;
+  document.getElementById(prefix + '-status').className = 'check-status status-missing';
+}
+
+function updateLaunchBtn() {
+  const btn = document.getElementById('btn-launch');
+  const hint = document.getElementById('launch-hint');
+  if (preflightOk.resume && preflightOk.service) {
+    btn.disabled = false;
+    hint.textContent = '环境就绪，点击开始';
+  } else if (!preflightOk.resume) {
+    hint.innerHTML = '⚠️ 请先 <a href="/resume" style="color:#007aff">上传简历</a> 建立画像';
+  } else {
+    hint.textContent = '⚠️ 部分服务不可用，请检查';
+  }
+}
+
+// ---- 启动流程 ----
+async function launchAutopilot() {
+  const btn = document.getElementById('btn-launch');
+  btn.disabled = true;
+  btn.textContent = '⏳ 执行中...';
+
+  const tl = document.getElementById('timeline');
+  tl.classList.add('active');
+
+  // 通过 chat API 发送一键求职指令给 AI
+  try {
+    updateStep(1, 'running', '正在分析画像...');
+    const r = await fetch(`${API}/api/autopilot`, { method: 'POST' });
+    const reader = r.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      // 解析 SSE 事件
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const evt = JSON.parse(line.slice(6));
+            handleAutopilotEvent(evt);
+          } catch(e) {}
+        }
+      }
+    }
+  } catch(e) {
+    btn.textContent = '❌ 执行失败';
+    console.error('Autopilot error:', e);
+  }
+}
+
+function handleAutopilotEvent(evt) {
+  const { step, status, detail, results } = evt;
+  if (step && status) {
+    updateStep(step, status, detail || '');
+  }
+  if (results) {
+    showResults(results);
+  }
+}
+
+function updateStep(n, status, detail) {
+  const el = document.getElementById(`tl-${n}`);
+  if (!el) return;
+  el.className = `tl-step ${status}`;
+  if (detail) {
+    document.getElementById(`tl-${n}-detail`).textContent = detail;
+  }
+}
+
+function showResults(jobs) {
+  const section = document.getElementById('results');
+  const list = document.getElementById('results-list');
+  section.classList.add('active');
+
+  list.innerHTML = jobs.map((j, i) => {
+    const rank = i + 1;
+    const rankClass = rank <= 3 ? `rank-${rank}` : 'rank-default';
+    const salary = j.salary || '面议';
+    return `
+      <div class="match-card">
+        <div class="match-rank ${rankClass}">${rank}</div>
+        <div class="match-info">
+          <div class="match-title">${j.title || ''}</div>
+          <div class="match-meta">${j.company || ''} · ${j.city || ''} · ${salary}${j.has_jd ? '' : ' · ⚠️无JD'}</div>
+          <div class="match-meta" style="color:#6b7280;font-size:11px;margin-top:2px;">
+            技能${j.skill_score || '-'} · 薪资${j.salary_match || '-'} · 经验${j.exp_match || '-'}
+            ${j.reason ? ' · ' + j.reason : ''}
+          </div>
+        </div>
+        <div class="match-score">${j.score || '-'}</div>
+        ${j.url ? `<a href="${j.url}" target="_blank" class="match-link">查看 →</a>` : ''}
+      </div>
+    `;
+  }).join('');
+
+  // 更新按钮
+  const btn = document.getElementById('btn-launch');
+  btn.textContent = '✅ 完成';
+  btn.disabled = true;
+}
+
+// 页面加载时执行预检
+runPreflight();
+</script>
+{% endblock %}

@@ -28,6 +28,10 @@ class WebSearchTool(Tool):
         return "web_search"
 
     @property
+    def toolset(self) -> str:
+        return "web"
+
+    @property
     def display_name(self) -> str:
         return "网页搜索"
 

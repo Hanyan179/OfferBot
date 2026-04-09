@@ -35,6 +35,10 @@ class PlatformGetConfigTool(Tool):
         return "platform_get_config"
 
     @property
+    def toolset(self) -> str:
+        return "admin"
+
+    @property
     def display_name(self) -> str:
         return "读取平台配置"
 
@@ -78,6 +82,10 @@ class PlatformUpdateConfigTool(Tool):
     @property
     def name(self) -> str:
         return "platform_update_config"
+
+    @property
+    def toolset(self) -> str:
+        return "admin"
 
     @property
     def display_name(self) -> str:

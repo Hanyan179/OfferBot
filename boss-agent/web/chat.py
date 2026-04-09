@@ -30,8 +30,8 @@ from db.database import Database
 from agent.bootstrap import bootstrap
 from tools.data.conversation_logger import ConversationLogger
 from tools.data.execution_trace import ExecutionTraceStore
-from tools.data.memory_tools import GetUserCognitiveModelTool
 from agent.system_prompt import build_full_system_prompt
+from agent.context_builder import ContextBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -63,9 +63,9 @@ async def _ensure_agent_ready(db: Database, config) -> bool:
     if not llm_config:
         cl.user_session.set("agent_ready", False)
         return False
-    # 配置没变且已 ready → 跳过
+    # 配置没变且已 ready → 跳过（但必须确认 executor 还在）
     current = cl.user_session.get("current_model")
-    if cl.user_session.get("agent_ready") and current == llm_config["model"]:
+    if cl.user_session.get("agent_ready") and current == llm_config["model"] and cl.user_session.get("executor"):
         return True
     # 配置变了或未初始化 → 重新初始化
     return await _init_agent(db, **llm_config)
@@ -171,7 +171,7 @@ def _format_tool_result(data: dict) -> str:
 async def on_chat_resume(thread):
     """Chainlit 侧边栏点击历史对话时触发 — 从 DataLayer 恢复对话上下文。"""
     tid = thread.get("id") if isinstance(thread, dict) else getattr(thread, "id", "?")
-    print(f">>> on_chat_resume 触发, thread_id={tid}")
+    logger.info("on_chat_resume 触发, thread_id=%s", tid)
     config = load_config()
     cl.user_session.set("config", config)
 
@@ -194,46 +194,42 @@ async def on_chat_resume(thread):
             history.append({"role": "assistant", "content": output})
     cl.user_session.set("chat_history", history)
 
-    # 加载记忆画像
-    memory_summary = ""
-    try:
-        result = await GetUserCognitiveModelTool().execute({}, {})
-        memory_summary = result.get("summary", "")
-    except Exception as e:
-        logger.warning("加载记忆画像失败: %s", e)
+    # --- 使用 ContextBuilder 构建上下文前言 ---
+    ctx_builder = ContextBuilder()
+    context_preamble = await ctx_builder.build_preamble(db=db)
+    cl.user_session.set("context_preamble", context_preamble)
 
-    # System prompt + Skills
+    # System prompt + Skills + Context Preamble
     skills_section = ""
-    full_system_prompt = build_full_system_prompt(skills_prompt_section=skills_section)
+    full_system_prompt = build_full_system_prompt(
+        skills_prompt_section=skills_section,
+        context_preamble=context_preamble,
+    )
     cl.user_session.set("system_prompt", full_system_prompt)
 
     await _ensure_agent_ready(db, config)
 
+    if not cl.user_session.get("agent_ready"):
+        await cl.Message(
+            content="⚙️ Agent 未就绪，请先在顶部导航栏点击「设置」配置 API Key，或刷新页面重试。"
+        ).send()
+        return
+
     skill_loader = cl.user_session.get("skill_loader")
     if skill_loader is not None:
         skills_section = skill_loader.to_prompt_section()
-        full_system_prompt = build_full_system_prompt(skills_prompt_section=skills_section)
+        full_system_prompt = build_full_system_prompt(
+            skills_prompt_section=skills_section,
+            context_preamble=context_preamble,
+        )
         cl.user_session.set("system_prompt", full_system_prompt)
 
     if cl.user_session.get("agent_ready"):
-        profile_rows = await db.execute(
-            "SELECT name, city, current_role, years_of_experience FROM resumes WHERE is_active = 1 LIMIT 1"
-        )
-        has_profile = bool(profile_rows and profile_rows[0].get("name"))
-        if has_profile:
-            profile_context = json.dumps(dict(profile_rows[0]), ensure_ascii=False, default=str)
-            history.insert(0, {"role": "system", "content": f"[用户档案] {profile_context}"})
-        if memory_summary:
-            idx = 1 if has_profile else 0
-            history.insert(idx, {"role": "system", "content": f"[用户记忆画像]\n{memory_summary}"})
-        cl.user_session.set("chat_history", history)
-
         has_history = any(m.get("role") in ("user", "assistant") for m in history)
         if not has_history:
-            if has_profile:
-                p = profile_rows[0]
-                welcome = f"## 👋 欢迎回来，{p.get('name', '')}\n\n"
-                details = [d for d in [f"📍 {p['city']}" if p.get('city') else "", f"💼 {p['current_role']}" if p.get('current_role') else ""] if d]
+            if ctx_builder.has_profile:
+                welcome = f"## 👋 欢迎回来，{ctx_builder.profile_name}\n\n"
+                details = [d for d in [f"📍 {ctx_builder.profile_city}" if ctx_builder.profile_city else "", f"💼 {ctx_builder.profile_role}" if ctx_builder.profile_role else ""] if d]
                 if details:
                     welcome += " · ".join(details) + "\n\n"
                 welcome += "有什么我可以帮你的？可以继续上次的求职进展，或者告诉我新的需求。"
@@ -245,19 +241,30 @@ async def on_chat_resume(thread):
                 )
             await cl.Message(content=welcome).send()
 
-    # ---- 恢复 UI 元素（从 DataLayer elements 表） ----
+    # ---- 恢复 UI 元素 ----
+    # 必须重新 send() 才能渲染 custom elements。
+    # 去重：按 (name, props) 只保留最后一个，防止历史重复累积。
+    # persisted=True：告诉 Chainlit 跳过 DataLayer 写入，不产生新记录。
     elements = thread.get("elements") or []
     custom_elements = [e for e in elements if e.get("type") == "custom"]
-    if custom_elements:
+    seen = {}
+    for el in custom_elements:
+        key = (el.get("name", ""), el.get("props", ""))
+        seen[key] = el
+    deduped = list(seen.values())
+
+    if deduped:
         async def _restore_ui_elements():
-            await asyncio.sleep(1)  # 等 resume_thread 事件处理完
+            await asyncio.sleep(0.5)
             try:
-                for el in custom_elements:
+                for el in deduped:
                     name = el.get("name", "")
                     props_raw = el.get("props", "{}")
                     props = json.loads(props_raw) if isinstance(props_raw, str) else (props_raw or {})
                     element = cl.CustomElement(name=name, props=props, display="inline")
-                    await cl.Message(content="\u200b", elements=[element]).send()
+                    msg = cl.Message(content="", elements=[element])
+                    msg.persisted = True  # 跳过 DataLayer 写入
+                    await msg.send()
                     if name == "JobList" and props.get("jobs"):
                         id_map = {j["seq"]: {"id": j["id"], "title": j["title"], "company": j["company"]} for j in props["jobs"]}
                         cl.user_session.set("job_id_map", id_map)
@@ -291,20 +298,17 @@ async def on_chat_start():
 
     # Chainlit DataLayer 自动管理 thread，不需要手动创建
 
-    # --- 加载记忆画像摘要 ---
-    memory_summary = ""
-    try:
-        result = await GetUserCognitiveModelTool().execute({}, {})
-        memory_summary = result.get("summary", "")
-    except Exception as e:
-        logger.warning("加载记忆画像失败: %s", e)
+    # --- 使用 ContextBuilder 构建上下文前言 ---
+    ctx_builder = ContextBuilder()
+    context_preamble = await ctx_builder.build_preamble(db=db)
+    cl.user_session.set("context_preamble", context_preamble)
 
-    # --- 加载 Skills 摘要（在 Agent 初始化后从 bootstrap 的 skill_loader 获取） ---
-    # 先用空 skills_section 构建 system prompt，Agent 初始化后再更新
+    # --- 构建完整 System Prompt（基础 + 记忆指引 + Skills + 上下文前言） ---
     skills_section = ""
-
-    # --- 构建完整 System Prompt（基础 + 记忆指引 + Skills） ---
-    full_system_prompt = build_full_system_prompt(skills_prompt_section=skills_section)
+    full_system_prompt = build_full_system_prompt(
+        skills_prompt_section=skills_section,
+        context_preamble=context_preamble,
+    )
     cl.user_session.set("system_prompt", full_system_prompt)
 
     # 尝试从数据库读取 LLM 配置
@@ -314,7 +318,10 @@ async def on_chat_start():
     skill_loader = cl.user_session.get("skill_loader")
     if skill_loader is not None:
         skills_section = skill_loader.to_prompt_section()
-        full_system_prompt = build_full_system_prompt(skills_prompt_section=skills_section)
+        full_system_prompt = build_full_system_prompt(
+            skills_prompt_section=skills_section,
+            context_preamble=context_preamble,
+        )
         cl.user_session.set("system_prompt", full_system_prompt)
 
     if not cl.user_session.get("agent_ready"):
@@ -325,51 +332,17 @@ async def on_chat_start():
             "⚙️ 请先点击顶部导航栏的「设置」配置 API Key，保存后会自动回到对话。"
         ).send()
     else:
-        # 已配置 — 查用户档案，固定开场白 + 上下文注入
-        profile_rows = await db.execute(
-            "SELECT name, city, current_role, years_of_experience FROM resumes WHERE is_active = 1 LIMIT 1"
-        )
-        has_profile = bool(profile_rows and profile_rows[0].get("name"))
-
-        if has_profile:
-            p = profile_rows[0]
-            name = p.get("name", "")
-            city = p.get("city", "")
-            role = p.get("current_role", "")
-            welcome = f"## 👋 欢迎回来，{name}\n\n"
+        if ctx_builder.has_profile:
+            welcome = f"## 👋 欢迎回来，{ctx_builder.profile_name}\n\n"
             details = []
-            if city:
-                details.append(f"📍 {city}")
-            if role:
-                details.append(f"💼 {role}")
+            if ctx_builder.profile_city:
+                details.append(f"📍 {ctx_builder.profile_city}")
+            if ctx_builder.profile_role:
+                details.append(f"💼 {ctx_builder.profile_role}")
             if details:
                 welcome += " · ".join(details) + "\n\n"
             welcome += "有什么我可以帮你的？可以继续上次的求职进展，或者告诉我新的需求。"
-
-            # 把用户档案摘要注入到对话历史的 system 上下文中
-            history = cl.user_session.get("chat_history", [])
-            profile_context = json.dumps(dict(profile_rows[0]), ensure_ascii=False, default=str)
-            history.insert(0, {
-                "role": "system",
-                "content": f"[用户档案] {profile_context}",
-            })
-            # 注入记忆画像摘要到 system 上下文
-            if memory_summary:
-                history.insert(1, {
-                    "role": "system",
-                    "content": f"[用户记忆画像]\n{memory_summary}",
-                })
-            cl.user_session.set("chat_history", history)
         else:
-            # 无档案时也注入记忆画像（如果有）
-            if memory_summary:
-                history = cl.user_session.get("chat_history", [])
-                history.insert(0, {
-                    "role": "system",
-                    "content": f"[用户记忆画像]\n{memory_summary}",
-                })
-                cl.user_session.set("chat_history", history)
-
             welcome = (
                 "## 👋 你好，我是 MooBot\n\n"
                 "我是你的 AI 求职顾问，从认识你自己到拿到 offer，全程陪你。\n\n"
@@ -401,6 +374,7 @@ async def on_action_card_submit(action: cl.Action):
         card_el.props["status"] = "executing"
         await card_el.update()
 
+    # 特殊流程（有复杂逻辑的 card_type）
     if card_type == "start_task":
         await _execute_start_task(params, card_el)
     elif card_type == "fetch_detail":
@@ -408,9 +382,61 @@ async def on_action_card_submit(action: cl.Action):
     elif card_type == "deliver":
         await _execute_deliver(params, job_ids, card_el)
     else:
+        # 通用路径：通过 tool_name 直接调 Tool，结果进任务面板
+        tool_name = payload.get("tool_name")
+        import pathlib; pathlib.Path("/tmp/moobot_dispatch.log").write_text(f"card_type={card_type}\ntool_name={tool_name}\nparams={params}\npayload_keys={list(payload.keys())}\n")
+        await _execute_generic_tool(tool_name or card_type, params, card_el)
+
+
+async def _execute_generic_tool(tool_name: str, params: dict, card_el):
+    """通用 Tool 执行：查找 Tool → 执行 → 结果写任务面板。"""
+    from services.task_state import TaskStateStore, TaskInfo
+    import time as _time
+
+    registry = cl.user_session.get("registry")
+    db = cl.user_session.get("db")
+
+    if not registry or not registry.has_tool(tool_name):
         if card_el:
             card_el.props["status"] = "failed"
-            card_el.props["result_message"] = f"未知操作类型: {card_type}"
+            card_el.props["result_message"] = f"未知工具: {tool_name}"
+            await card_el.update()
+        return
+
+    # 注册任务到面板
+    task_id = f"{tool_name}-{int(_time.time())}"
+    store = TaskStateStore.get()
+    tool = registry.get_tool(tool_name)
+    store.upsert(TaskInfo(
+        task_id=task_id, name=tool.display_name,
+        platform="local", status="running", progress_text="执行中",
+    ))
+
+    try:
+        context = {"db": db, "getjob_client": cl.user_session.get("getjob_client"), "job_rag": cl.user_session.get("job_rag")}
+        result = await tool.execute(params, context)
+        logger.info("_execute_generic_tool: tool=%s params=%s result=%s", tool_name, params, result)
+        import pathlib; pathlib.Path("/tmp/moobot_generic.log").write_text(f"tool={tool_name}\nparams={params}\nresult={result}\n")
+        # confirm_required 不应该出现在这里，但防御一下
+        if isinstance(result, dict) and result.get("action") == "confirm_required":
+            if card_el:
+                card_el.props["status"] = "failed"
+                card_el.props["result_message"] = "确认参数丢失，请重试"
+                await card_el.update()
+            store.update_status(task_id, "failed", "确认参数丢失")
+            return
+        success = result.get("success", True) if isinstance(result, dict) else True
+        msg = result.get("message", "完成") if isinstance(result, dict) else "完成"
+        store.update_status(task_id, "completed" if success else "failed", msg)
+        if card_el:
+            card_el.props["status"] = "completed" if success else "failed"
+            card_el.props["result_message"] = msg
+            await card_el.update()
+    except Exception as e:
+        store.update_status(task_id, "failed", str(e))
+        if card_el:
+            card_el.props["status"] = "failed"
+            card_el.props["result_message"] = str(e)
             await card_el.update()
 
 
@@ -518,6 +544,7 @@ async def _execute_deliver(params: dict, job_ids: list, card_el):
         await card_el.update()
 
 
+
 @cl.action_callback("action_card_cancel")
 async def on_action_card_cancel(action: cl.Action):
     """用户取消操作卡片"""
@@ -617,6 +644,7 @@ async def handle_user_message(content: str):
     system_prompt = cl.user_session.get("system_prompt")
 
     if not executor:
+        logger.error("executor=None, agent_ready=%s", cl.user_session.get("agent_ready"))
         await cl.Message(content="❌ Agent 未初始化，请刷新页面重试。").send()
         return
 

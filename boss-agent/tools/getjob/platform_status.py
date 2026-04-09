@@ -23,6 +23,10 @@ class PlatformStatusTool(Tool):
         return "platform_status"
 
     @property
+    def toolset(self) -> str:
+        return "admin"
+
+    @property
     def display_name(self) -> str:
         return "平台状态查询"
 

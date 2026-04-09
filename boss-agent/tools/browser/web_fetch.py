@@ -116,6 +116,10 @@ class WebFetchTool(Tool):
         return "web_fetch"
 
     @property
+    def toolset(self) -> str:
+        return "web"
+
+    @property
     def display_name(self) -> str:
         return "网页抓取"
 

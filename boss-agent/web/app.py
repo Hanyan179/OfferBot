@@ -830,9 +830,12 @@ async def api_list_jobs(
     city: str = "",
     keyword: str = "",
     salary_min: int = 0,
+    salary_max: int = 0,
     has_jd: bool = False,
+    sort: str = "",
+    order: str = "desc",
 ):
-    """岗位列表 API，支持分页和筛选"""
+    """岗位列表 API，支持分页、筛选和排序"""
     db = await _get_db()
     conditions = []
     params: list = []
@@ -847,10 +850,18 @@ async def api_list_jobs(
         params.append(f"%{keyword}%")
         params.append(f"%{keyword}%")
     if salary_min > 0:
-        conditions.append("(salary_max >= ? OR salary_max IS NULL)")
+        conditions.append("salary_min >= ?")
         params.append(salary_min)
+    if salary_max > 0:
+        conditions.append("salary_max <= ?")
+        params.append(salary_max)
 
     where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+
+    # 排序（白名单防注入）
+    _allowed = {"salary_min": "salary_min", "match_score": "match_score"}
+    direction = "ASC" if order == "asc" else "DESC"
+    order_clause = f"{_allowed[sort]} {direction} NULLS LAST, id DESC" if sort in _allowed else "id DESC"
 
     # 总数
     count_rows = await db.execute(f"SELECT COUNT(*) as cnt FROM jobs{where}", tuple(params))
@@ -859,7 +870,7 @@ async def api_list_jobs(
     # 分页数据
     offset = (page - 1) * size
     rows = await db.execute(
-        f"SELECT id, url, title, company, salary_min, salary_max, city, match_score FROM jobs{where} ORDER BY id DESC LIMIT ? OFFSET ?",
+        f"SELECT id, url, title, company, salary_min, salary_max, city, match_score FROM jobs{where} ORDER BY {order_clause} LIMIT ? OFFSET ?",
         tuple(params) + (size, offset),
     )
 
@@ -1379,6 +1390,337 @@ async def api_ai_exposure():
         return JSONResponse({"ok": False, "error": "AI 返回格式异常，请重试"})
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)})
+
+
+# ---- 一键智能求职 ----
+
+@app.get("/autopilot", response_class=HTMLResponse)
+async def autopilot_page(request: Request):
+    return templates.TemplateResponse(request, "autopilot.html", {
+        "title": "一键智能求职", "active": "autopilot",
+    })
+
+
+@app.post("/api/autopilot")
+async def api_autopilot():
+    """一键智能求职 SSE 端点 — 流式返回每步进度和最终结果。
+
+    全流程：画像检查 → 本地数据检查 → 程序化过滤 → JD覆盖检查 → 量化匹配 → TopN
+    """
+    import json as _json
+    import asyncio
+    import re as _re
+    from openai import AsyncOpenAI
+    from fastapi.responses import StreamingResponse
+
+    db = await _get_db()
+
+    # ---- 程序化评分函数（不消耗 token） ----
+    _EDU_LEVEL = {"大专": 1, "本科": 2, "硕士": 3, "博士": 4}
+
+    def _calc_salary(u_min, u_max, j_min, j_max):
+        if not j_min and not j_max:
+            return 50
+        if not u_min:
+            return 50
+        j_min, j_max = j_min or 0, j_max or j_min or 0
+        u_min, u_max = u_min or 0, u_max or u_min or 0
+        overlap = min(u_max, j_max) - max(u_min, j_min)
+        span = max(u_max, j_max) - min(u_min, j_min)
+        return max(0, min(100, int(overlap / span * 100))) if span else 100
+
+    def _calc_location(job_city, targets):
+        if not targets:
+            return 100
+        return 100 if any(t in (job_city or "") for t in targets) else 0
+
+    def _calc_edu(user_edu, job_edu):
+        if not job_edu or "不限" in job_edu:
+            return 100
+        u, j = _EDU_LEVEL.get(user_edu, 2), _EDU_LEVEL.get(job_edu, 2)
+        return 100 if u >= j else (60 if u == j - 1 else 20)
+
+    def _calc_exp(user_years, job_exp):
+        if not job_exp or "不限" in job_exp:
+            return 100
+        if not user_years:
+            return 50
+        m = _re.search(r"(\d+)\s*[-–]\s*(\d+)", job_exp)
+        lo, hi = (int(m.group(1)), int(m.group(2))) if m else (int(s.group(1)), int(s.group(1)) + 5) if (s := _re.search(r"(\d+)", job_exp)) else (0, 99)
+        if lo <= user_years <= hi:
+            return 100
+        return 70 if user_years > hi else (60 if user_years >= lo - 1 else 30)
+
+    async def _stream():
+        def _evt(step, status, detail="", results=None):
+            d = {"step": step, "status": status, "detail": detail}
+            if results is not None:
+                d["results"] = results
+            return f"data: {_json.dumps(d, ensure_ascii=False)}\n\n"
+
+        # ---- Step 1: 检查画像 ----
+        yield _evt(1, "running", "正在检查用户画像...")
+        rows = await db.execute("SELECT * FROM resumes WHERE is_active = 1 LIMIT 1")
+        if not rows or not rows[0].get("name"):
+            yield _evt(1, "error", "未找到简历，请先上传简历")
+            return
+        resume = rows[0]
+        pref_rows = await db.execute("SELECT * FROM job_preferences WHERE is_active = 1 LIMIT 1")
+        prefs = pref_rows[0] if pref_rows else {}
+
+        def _j(v):
+            try:
+                return _json.loads(v) if v else []
+            except Exception:
+                return []
+
+        target_cities = _j(prefs.get("target_cities"))
+        target_roles = _j(prefs.get("target_roles"))
+        skills = _j(resume.get("skills_flat"))
+        salary_min = prefs.get("salary_min")
+        salary_max = prefs.get("salary_max")
+        user_edu = resume.get("education_level", "")
+        user_years = resume.get("years_of_experience")
+        name = resume.get("name", "")
+        city = target_cities[0] if target_cities else resume.get("city", "")
+        deal_breakers = _j(prefs.get("deal_breakers"))
+
+        summary = name
+        if city:
+            summary += f"，{city}"
+        if target_roles:
+            summary += f"，目标: {', '.join(target_roles[:3])}"
+        yield _evt(1, "done", f"✅ {summary}")
+
+        # ---- Step 2: 构建搜索条件 ----
+        yield _evt(2, "running", "构建搜索条件...")
+        keywords = target_roles[:3] if target_roles else skills[:3]
+        if not keywords:
+            keywords = [resume.get("current_role", "工程师")]
+        config_desc = f"关键词: {keywords}, 城市: {city or '不限'}"
+        if salary_min:
+            config_desc += f", 薪资: {salary_min}-{salary_max}K"
+        yield _evt(2, "done", f"✅ {config_desc}")
+
+        # ---- Step 3: 查本地数据 ----
+        yield _evt(3, "running", "检查本地岗位数据...")
+
+        # 查本地匹配数据
+        conditions, params_list = [], []
+        if city:
+            conditions.append("city LIKE ?")
+            params_list.append(f"%{city}%")
+        if keywords:
+            kw_parts = []
+            for kw in keywords:
+                kw_parts.append("(title LIKE ? OR raw_jd LIKE ?)")
+                params_list.extend([f"%{kw}%", f"%{kw}%"])
+            conditions.append(f"({' OR '.join(kw_parts)})")
+        where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+        count_rows = await db.execute(f"SELECT COUNT(*) as cnt FROM jobs{where}", tuple(params_list))
+        local_count = count_rows[0]["cnt"] if count_rows else 0
+
+        if local_count == 0:
+            total_rows = await db.execute("SELECT COUNT(*) as cnt FROM jobs")
+            total = total_rows[0]["cnt"] if total_rows else 0
+            yield _evt(3, "done", f"⚠️ 匹配 0 条（总 {total} 条），建议在对话中触发爬取后再来")
+            return
+        yield _evt(3, "done", f"✅ 本地 {local_count} 条匹配岗位")
+
+        # ---- Step 4: 程序化过滤 ----
+        yield _evt(4, "running", "程序化过滤无效数据...")
+        limit = min(local_count, 200)
+        all_jobs = await db.execute(
+            f"SELECT id, title, company, salary_min, salary_max, city, url, raw_jd,"
+            f" experience, education, company_industry"
+            f" FROM jobs{where}"
+            f" ORDER BY CASE WHEN raw_jd IS NOT NULL AND raw_jd != '' THEN 0 ELSE 1 END, id DESC"
+            f" LIMIT ?",
+            tuple(params_list) + (limit,),
+        )
+
+        # 加载黑名单
+        bl_rows = await db.execute("SELECT company FROM blacklist")
+        blacklist = {r["company"] for r in bl_rows}
+
+        filtered, reasons = [], {"无效": 0, "黑名单": 0, "薪资": 0, "城市": 0, "deal_breaker": 0}
+        for j in all_jobs:
+            if not j.get("title") or not j.get("url"):
+                reasons["无效"] += 1
+                continue
+            if j.get("company") in blacklist:
+                reasons["黑名单"] += 1
+                continue
+            if salary_min and j.get("salary_max") and j["salary_max"] < salary_min:
+                reasons["薪资"] += 1
+                continue
+            if target_cities and j.get("city"):
+                if not any(tc in j["city"] for tc in target_cities):
+                    reasons["城市"] += 1
+                    continue
+            # deal_breakers 检查（基于 JD 文本）
+            if deal_breakers and j.get("raw_jd"):
+                jd_lower = j["raw_jd"].lower()
+                hit = False
+                for db_item in deal_breakers:
+                    if db_item.lower() in jd_lower:
+                        hit = True
+                        break
+                if hit:
+                    reasons["deal_breaker"] += 1
+                    continue
+            filtered.append(j)
+
+        excluded = len(all_jobs) - len(filtered)
+        reason_parts = [f"{k} {v}" for k, v in reasons.items() if v > 0]
+        filter_detail = f"✅ {len(all_jobs)} → {len(filtered)} 条（排除 {excluded}）"
+        if reason_parts:
+            filter_detail += f"（{', '.join(reason_parts)}）"
+        yield _evt(4, "done", filter_detail)
+
+        if not filtered:
+            yield _evt(5, "error", "过滤后无有效岗位，建议放宽条件")
+            return
+
+        # ---- Step 5: JD 覆盖率检查 ----
+        yield _evt(5, "running", "检查 JD 覆盖率...")
+        has_jd = sum(1 for j in filtered if j.get("raw_jd"))
+        yield _evt(5, "done", f"✅ {has_jd}/{len(filtered)} 条有 JD")
+
+        # ---- Step 6: 量化匹配（程序化 + LLM） ----
+        yield _evt(6, "running", "量化匹配分析...")
+
+        settings = await _load_llm_settings(db)
+        api_key = settings.get("llm_api_key")
+        if not api_key:
+            yield _evt(6, "error", "未配置 API Key，无法进行 AI 匹配")
+            return
+        base_url = settings.get("llm_base_url") or "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        model = settings.get("llm_model") or "qwen3.5-flash"
+
+        # 先算程序化维度
+        for j in filtered:
+            j["_salary_m"] = _calc_salary(salary_min, salary_max, j.get("salary_min"), j.get("salary_max"))
+            j["_location_m"] = _calc_location(j.get("city"), target_cities)
+            j["_edu_m"] = _calc_edu(user_edu, j.get("education"))
+            j["_exp_m"] = _calc_exp(user_years, j.get("experience"))
+
+        # 构建画像摘要
+        profile_text = ""
+        if resume.get("current_role"):
+            profile_text += f"当前职位: {resume['current_role']}\n"
+        if user_years:
+            profile_text += f"工作年限: {user_years}年\n"
+        if skills:
+            profile_text += f"技能: {', '.join(skills[:15])}\n"
+        if target_roles:
+            profile_text += f"目标岗位: {', '.join(target_roles)}\n"
+        hl = _j(resume.get("highlights"))
+        if hl:
+            profile_text += f"核心亮点: {', '.join(hl[:5])}\n"
+
+        # 分批 LLM 评估 skill_score + responsibility_score
+        batch_size = 12
+        client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=120)
+        llm_scores = {}
+
+        for i in range(0, len(filtered), batch_size):
+            batch = filtered[i:i + batch_size]
+            bn = i // batch_size + 1
+            tb = (len(filtered) + batch_size - 1) // batch_size
+            yield _evt(6, "running", f"AI 评估中... 第 {bn}/{tb} 批")
+
+            jobs_text = ""
+            for j in batch:
+                sm, sx = j.get("salary_min") or 0, j.get("salary_max") or 0
+                sal = f"{sm}-{sx}K" if sm else "面议"
+                snippet = (j["raw_jd"][:300] if j.get("raw_jd") else "")
+                jobs_text += f"\n[{j['id']}] {j.get('title','')} | {j.get('company','')} | {sal}"
+                if snippet:
+                    jobs_text += f"\n  JD: {snippet}"
+
+            prompt = (
+                "你是求职匹配分析专家。评估技能匹配度和职责匹配度。\n\n"
+                f"## 用户画像\n{profile_text}\n"
+                f"## 候选岗位\n{jobs_text}\n\n"
+                "输出 JSON 数组（不要其他内容）：\n"
+                '[{"id": 岗位ID, "skill_score": 0-100, "resp_score": 0-100, '
+                '"missing_skills": ["缺失技能"], "matching_skills": ["匹配技能"], '
+                '"reason": "一句话理由"}]'
+            )
+            try:
+                resp = await client.chat.completions.create(
+                    model=model,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.2,
+                )
+                raw = resp.choices[0].message.content.strip()
+                if "```" in raw:
+                    raw = raw.split("```")[1]
+                    if raw.startswith("json"):
+                        raw = raw[4:]
+                    raw = raw.strip()
+                for item in _json.loads(raw):
+                    if isinstance(item, dict) and "id" in item:
+                        llm_scores[item["id"]] = item
+            except Exception:
+                pass
+            await asyncio.sleep(0.3)
+
+        # 合并 7 维度计算综合分
+        # 权重: skill 30%, exp 15%, salary 15%, location 10%, edu 10%, resp 10%, embed 10%
+        results = []
+        for j in filtered:
+            jid = j["id"]
+            ls = llm_scores.get(jid, {})
+            has_jd_flag = bool(j.get("raw_jd"))
+            skill_s = ls.get("skill_score", 40 if not has_jd_flag else 50)
+            resp_s = ls.get("resp_score", 50)
+            if not has_jd_flag:
+                skill_s = min(skill_s, 60)
+
+            overall = round(
+                skill_s * 0.30
+                + j["_exp_m"] * 0.15
+                + j["_salary_m"] * 0.15
+                + j["_location_m"] * 0.10
+                + j["_edu_m"] * 0.10
+                + resp_s * 0.10
+                + 50 * 0.10  # embedding_similarity 默认值
+            )
+            sm, sx = j.get("salary_min") or 0, j.get("salary_max") or 0
+            results.append({
+                "id": jid,
+                "title": j.get("title", ""),
+                "company": j.get("company", ""),
+                "city": j.get("city", ""),
+                "salary": f"{sm}-{sx}K" if sm else "面议",
+                "url": j.get("url", ""),
+                "score": overall,
+                "skill_score": skill_s,
+                "salary_match": j["_salary_m"],
+                "exp_match": j["_exp_m"],
+                "reason": ls.get("reason", ""),
+                "has_jd": has_jd_flag,
+            })
+
+        results.sort(key=lambda x: x["score"], reverse=True)
+        top_n = results[:10]
+
+        # 写回 match_score
+        for r in results:
+            try:
+                await db.execute_write("UPDATE jobs SET match_score = ? WHERE id = ?", (r["score"], r["id"]))
+            except Exception:
+                pass
+
+        yield _evt(6, "done", f"✅ 完成 {len(results)} 条量化匹配", results=top_n)
+
+    return StreamingResponse(
+        _stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # ---- Chainlit DataLayer (SQLAlchemy + SQLite) ----

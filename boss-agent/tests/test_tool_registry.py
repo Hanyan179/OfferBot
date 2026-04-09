@@ -207,6 +207,49 @@ class TestToolRegistry:
 
 
 # ---------------------------------------------------------------------------
+# validate_tool_names unit tests
+# ---------------------------------------------------------------------------
+
+class TestValidateToolNames:
+    """validate_tool_names 单元测试"""
+
+    def test_empty_query_list(self):
+        """空查询列表应返回空列表"""
+        reg = ToolRegistry()
+        reg.register(DummyTool(name="a"))
+        assert reg.validate_tool_names([]) == []
+
+    def test_all_names_exist(self):
+        """所有查询名都已注册时应返回空列表"""
+        reg = ToolRegistry()
+        reg.register(DummyTool(name="tool_a"))
+        reg.register(DummyTool(name="tool_b"))
+        reg.register(DummyTool(name="tool_c"))
+        assert reg.validate_tool_names(["tool_a", "tool_b", "tool_c"]) == []
+
+    def test_some_names_missing(self):
+        """部分查询名未注册时应返回未注册的名称"""
+        reg = ToolRegistry()
+        reg.register(DummyTool(name="exists_1"))
+        reg.register(DummyTool(name="exists_2"))
+        result = reg.validate_tool_names(["exists_1", "missing_1", "exists_2", "missing_2"])
+        assert result == ["missing_1", "missing_2"]
+
+    def test_all_names_missing(self):
+        """所有查询名都未注册时应返回全部"""
+        reg = ToolRegistry()
+        result = reg.validate_tool_names(["x", "y", "z"])
+        assert result == ["x", "y", "z"]
+
+    def test_preserves_order(self):
+        """返回结果应保持输入顺序"""
+        reg = ToolRegistry()
+        reg.register(DummyTool(name="b"))
+        result = reg.validate_tool_names(["c", "a", "d"])
+        assert result == ["c", "a", "d"]
+
+
+# ---------------------------------------------------------------------------
 # Hypothesis strategies for property-based testing
 # ---------------------------------------------------------------------------
 
@@ -358,3 +401,38 @@ class TestToolRegistrySchemaCompliance:
 
         # All registered tool names appear in schemas
         assert schema_names == set(unique_configs.keys())
+
+
+# ---------------------------------------------------------------------------
+# Property-based tests — Property 6: validate_tool_names Correctness
+# ---------------------------------------------------------------------------
+
+class TestValidateToolNamesPBT:
+    """
+    # Feature: tools-api-docs-and-tests, Property 6: validate_tool_names Correctness
+    #
+    # For any ToolRegistry with a set of registered tool names R, and any
+    # list of query names Q, calling validate_tool_names(Q) SHALL return
+    # exactly the set Q \\ R (names in Q that are not in R).
+    """
+
+    @given(
+        registered=st.lists(st_tool_name, min_size=0, max_size=15, unique=True),
+        queried=st.lists(st_tool_name, min_size=0, max_size=15),
+    )
+    @settings(max_examples=100)
+    def test_validate_returns_q_minus_r(self, registered: list[str], queried: list[str]):
+        """
+        # Feature: tools-api-docs-and-tests, Property 6: validate_tool_names Correctness
+        validate_tool_names(Q) returns exactly Q \\ R preserving order.
+        **Validates: Requirements 7.1**
+        """
+        reg = ToolRegistry()
+        for name in registered:
+            reg.register(DummyTool(name=name))
+
+        result = reg.validate_tool_names(queried)
+
+        registered_set = set(registered)
+        expected = [n for n in queried if n not in registered_set]
+        assert result == expected

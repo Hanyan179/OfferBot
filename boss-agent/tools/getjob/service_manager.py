@@ -35,6 +35,10 @@ class GetjobServiceManagerTool(Tool):
         return "getjob_service_manage"
 
     @property
+    def toolset(self) -> str:
+        return "admin"
+
+    @property
     def display_name(self) -> str:
         return "管理爬虫服务"
 

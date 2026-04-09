@@ -184,6 +184,14 @@ class SyncJobsTool(Tool):
         return "sync_jobs"
 
     @property
+    def toolset(self) -> str:
+        return "crawl"
+
+    @property
+    def toolset(self) -> str:
+        return "crawl"
+
+    @property
     def display_name(self) -> str:
         return "同步岗位数据"
 

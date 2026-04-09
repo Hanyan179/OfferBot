@@ -66,15 +66,22 @@ TEST_QUERIES = [
 # ---------------------------------------------------------------------------
 
 async def _create_job_rag(cfg) -> tuple[JobRAG, Database]:
-    """创建并初始化 JobRAG 和 Database。"""
+    """创建并初始化 JobRAG 和 Database。从 user_preferences 读 LLM 配置。"""
     db = Database(cfg.db_path)
     await db.connect()
 
+    # 优先从数据库读 LLM 配置（settings 页面保存的）
+    rows = await db.execute("SELECT key, value FROM user_preferences WHERE key IN ('llm_api_key', 'llm_base_url', 'llm_model')")
+    db_cfg = {r["key"]: r["value"] for r in rows}
+    api_key = db_cfg.get("llm_api_key") or cfg.dashscope_api_key
+    base_url = db_cfg.get("llm_base_url") or cfg.api_base_url
+    model = db_cfg.get("llm_model") or cfg.dashscope_llm_model
+
     rag = JobRAG(
         working_dir=str(PROJECT_ROOT / "data" / "lightrag_jobs"),
-        api_key=cfg.dashscope_api_key,
-        base_url=cfg.api_base_url,
-        model=cfg.dashscope_llm_model,
+        api_key=api_key,
+        base_url=base_url,
+        model=model,
         db=db,
     )
     await rag.initialize()
@@ -500,11 +507,8 @@ async def main() -> None:
     )
 
     cfg = load_config()
-    if not cfg.dashscope_api_key:
-        print("[错误] 未设置 DASHSCOPE_API_KEY 环境变量")
-        sys.exit(1)
+    # 不再要求 DASHSCOPE_API_KEY 环境变量，从数据库 user_preferences 读取
 
-    print(f"LLM: {cfg.dashscope_llm_model}")
     print(f"数据目录: {PROJECT_ROOT / 'data' / 'lightrag_jobs'}")
 
     rag, db = await _create_job_rag(cfg)

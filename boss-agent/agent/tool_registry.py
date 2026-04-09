@@ -47,6 +47,11 @@ class Tool(ABC):
         """Tool 分类，用于 get_tools_by_category 查询"""
         return "general"
 
+    @property
+    def toolset(self) -> str:
+        """Tool 所属工具集，用于动态 toolset 路由。默认 core（始终可见）。"""
+        return "core"
+
     @abstractmethod
     async def execute(self, params: dict, context: Any) -> Any:
         """
@@ -138,6 +143,29 @@ class ToolRegistry:
     def has_tool(self, name: str) -> bool:
         """检查是否已注册指定名称的 Tool。"""
         return name in self._tools
+
+    def get_tools_by_toolset(self, toolset: str) -> list[Tool]:
+        """返回属于指定 toolset 的所有 Tool。"""
+        return [t for t in self._tools.values() if t.toolset == toolset]
+
+    def get_schemas_for_toolsets(self, active_toolsets: set[str]) -> list[dict]:
+        """返回属于 active_toolsets 中任一 toolset 的 Tool 的 JSON Schema 列表。"""
+        schemas: list[dict] = []
+        for tool in self._tools.values():
+            if tool.toolset in active_toolsets:
+                schemas.append({
+                    "type": "function",
+                    "function": {
+                        "name": tool.name,
+                        "description": tool.description,
+                        "parameters": tool.parameters_schema,
+                    },
+                })
+        return schemas
+
+    def validate_tool_names(self, names: list[str]) -> list[str]:
+        """验证工具名列表，返回未注册的名称列表。"""
+        return [n for n in names if n not in self._tools]
 
     def unregister(self, name: str) -> bool:
         """注销 Tool，返回是否成功（Tool 不存在时返回 False）。"""

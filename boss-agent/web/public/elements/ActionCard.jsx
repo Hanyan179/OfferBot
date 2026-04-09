@@ -64,7 +64,7 @@ export default function ActionCard() {
   }
 
   const handleSubmit = () => {
-    const payload = { card_type: props.card_type, params: values }
+    const payload = { card_type: props.card_type, tool_name: props.tool_name, params: fields.length > 0 ? values : (props.params || {}) }
     if (jobs.length > 0) payload.job_ids = selectedJobIds
     callAction({ name: "action_card_submit", payload })
     updateElement({ ...props, status: "executing" })
