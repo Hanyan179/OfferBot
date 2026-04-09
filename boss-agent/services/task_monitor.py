@@ -17,10 +17,11 @@ import asyncio
 import logging
 import time
 from collections import deque
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +101,7 @@ class TaskMonitor:
         poll_interval: float = 5.0,
         max_polls: int = 120,
         agent_busy_check: Callable[[], bool] | None = None,
-        progress_callback: Callable[[str, int, bool], Awaitable[None]] | None = None,
+        progress_callback: Callable[[str, int, bool, str | None], Awaitable[None]] | None = None,
         on_complete: Callable[[str], Awaitable[dict]] | None = None,
     ) -> None:
         """启动后台轮询任务状态。"""
@@ -133,12 +134,13 @@ class TaskMonitor:
         poll_interval: float,
         max_polls: int,
         agent_busy_check: Callable[[], bool] | None,
-        progress_callback: Callable[[str, int, bool], Awaitable[None]] | None,
+        progress_callback: Callable[[str, int, bool, str | None], Awaitable[None]] | None,
         on_complete: Callable[[str], Awaitable[dict]] | None,
     ) -> None:
         """轮询循环：检查任务状态，完成时执行 on_complete 并入队通知"""
         polls = 0
         start = time.time()
+        consecutive_errors = 0
         try:
             while polls < max_polls:
                 polls += 1
@@ -148,18 +150,32 @@ class TaskMonitor:
                     result = await client.get_status(platform)
                 except Exception as e:
                     logger.warning("轮询 %s 状态失败: %s", platform, e)
+                    consecutive_errors += 1
+                    if progress_callback:
+                        try:
+                            await progress_callback(platform, polls, True, f"连接失败({consecutive_errors}次)")
+                        except Exception:
+                            pass
                     continue
 
                 if not result.get("success"):
-                    logger.warning("轮询 %s 返回失败: %s", platform, result.get("error"))
+                    error_msg = result.get("error", "未知错误")
+                    logger.warning("轮询 %s 返回失败: %s", platform, error_msg)
+                    consecutive_errors += 1
+                    if progress_callback:
+                        try:
+                            await progress_callback(platform, polls, True, error_msg)
+                        except Exception:
+                            pass
                     continue
 
+                consecutive_errors = 0
                 data = result.get("data", {})
                 is_running = data.get("isRunning", False)
 
                 if progress_callback:
                     try:
-                        await progress_callback(platform, polls, is_running)
+                        await progress_callback(platform, polls, is_running, None)
                     except Exception as e:
                         logger.warning("进度回调失败: %s", e)
 

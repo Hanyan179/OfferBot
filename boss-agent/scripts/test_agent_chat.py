@@ -17,11 +17,9 @@ import argparse
 import json
 import re
 import sys
-import time
 from pathlib import Path
 
 import httpx
-
 
 DEFAULT_BASE_URL = "http://localhost:8000"
 SCENARIOS_FILE = Path(__file__).parent / "test_scenarios.json"

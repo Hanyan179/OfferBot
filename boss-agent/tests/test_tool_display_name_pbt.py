@@ -17,7 +17,6 @@ from hypothesis import given, settings
 
 from agent.tool_registry import Tool, ToolRegistry
 
-
 # ---------------------------------------------------------------------------
 # Helper: 可配置 display_name 的 DummyTool
 # ---------------------------------------------------------------------------

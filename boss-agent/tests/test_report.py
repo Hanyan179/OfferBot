@@ -6,9 +6,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-import pytest
-
-from agent.report import ExecutionReport, StepReport, generate_report
+from agent.report import StepReport, generate_report
 from agent.state import AgentEvent, ExecutionPlan, PlanStep, ToolCall
 
 

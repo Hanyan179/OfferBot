@@ -14,9 +14,9 @@ from __future__ import annotations
 
 import asyncio
 
+from agent.system_prompt import build_full_system_prompt
 from db.database import Database
 from tools.data.query_jobs import QueryJobsTool
-from agent.system_prompt import build_full_system_prompt
 
 EXPECTED_KEYS = {
     "id", "url", "title", "company", "salary_min", "salary_max",

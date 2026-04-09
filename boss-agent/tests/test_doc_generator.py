@@ -13,17 +13,15 @@ from __future__ import annotations
 import re
 from typing import Any
 
-import pytest
-from hypothesis import given, settings, strategies as st
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from agent.tool_registry import Tool, ToolRegistry
 from scripts.generate_tool_docs import (
-    introspect_tool,
-    format_parameter_table,
     format_tool_section,
     generate_catalog,
+    introspect_tool,
 )
-
 
 # ---------------------------------------------------------------------------
 # DummyTool helper (mirrors test_tool_registry.py pattern)

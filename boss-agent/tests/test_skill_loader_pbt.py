@@ -37,10 +37,10 @@ import tempfile
 from pathlib import Path
 
 import yaml
-from hypothesis import given, settings, assume, strategies as st
+from hypothesis import assume, given, settings
+from hypothesis import strategies as st
 
-from agent.skill_loader import SkillLoader, SkillInfo, _parse_frontmatter
-
+from agent.skill_loader import SkillLoader
 
 # ---------------------------------------------------------------------------
 # Strategies (Generators)

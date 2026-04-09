@@ -10,14 +10,11 @@ WebFetchTool 单元测试
 from __future__ import annotations
 
 import asyncio
-from typing import Any
 
 import httpx
-import pytest
 
 from agent.tool_registry import Tool
-from tools.browser.web_fetch import WebFetchTool, TTLCache
-
+from tools.browser.web_fetch import TTLCache, WebFetchTool
 
 # ---------------------------------------------------------------------------
 # Helpers

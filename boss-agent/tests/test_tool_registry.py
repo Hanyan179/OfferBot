@@ -3,10 +3,10 @@
 from typing import Any
 
 import pytest
-from hypothesis import given, settings, strategies as st
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from agent.tool_registry import Tool, ToolRegistry
-
 
 # ---------------------------------------------------------------------------
 # Concrete Tool helpers for testing

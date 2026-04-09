@@ -4,9 +4,9 @@
 通过 POST /api/test/chat 接口，让 LLM 真实调用 Tool。
 """
 import asyncio
-import json
 import sys
 import time
+
 import httpx
 
 BASE = "http://localhost:7860"

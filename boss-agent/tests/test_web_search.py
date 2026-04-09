@@ -10,15 +10,11 @@ WebSearchTool 单元测试
 from __future__ import annotations
 
 import asyncio
-import json
-from typing import Any
 
 import httpx
-import pytest
 
 from agent.tool_registry import Tool
 from tools.browser.web_search import WebSearchTool
-
 
 # ---------------------------------------------------------------------------
 # Helpers

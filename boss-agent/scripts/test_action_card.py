@@ -14,8 +14,9 @@ ActionCard + TaskPanel 测试页面。
   demo          — 完整流程演示
 """
 
-import json
 import asyncio
+import json
+
 import chainlit as cl
 
 # ---- 猎聘选项 ----

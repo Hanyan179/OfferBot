@@ -16,11 +16,11 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock
 
-from hypothesis import given, settings, strategies as st
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from db.database import Database
 from tools.getjob.fetch_detail import FetchJobDetailTool
-
 
 # ---------------------------------------------------------------------------
 # Helpers

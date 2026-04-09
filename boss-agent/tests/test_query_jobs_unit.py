@@ -18,8 +18,6 @@ from __future__ import annotations
 
 import asyncio
 
-import pytest
-
 from db.database import Database
 from tools.data.query_jobs import QueryJobsTool
 

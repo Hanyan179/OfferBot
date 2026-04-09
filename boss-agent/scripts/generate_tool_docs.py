@@ -19,7 +19,6 @@ if str(_BOSS_AGENT_ROOT) not in sys.path:
 
 from agent.tool_registry import Tool, ToolRegistry
 
-
 # ---------------------------------------------------------------------------
 # 2.1  introspect_tool
 # ---------------------------------------------------------------------------

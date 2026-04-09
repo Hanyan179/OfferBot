@@ -10,7 +10,6 @@ from typing import Any
 
 from agent.tool_registry import Tool
 
-
 VALID_TOOLSETS = frozenset({"crawl", "deliver", "admin", "web"})
 
 

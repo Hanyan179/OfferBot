@@ -27,11 +27,11 @@ from __future__ import annotations
 import asyncio
 import time
 
-from hypothesis import given, settings, strategies as st
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from db.database import Database
-from web.resume_service import ResumeService, SCALAR_FIELDS, LIST_FIELDS
-
+from web.resume_service import LIST_FIELDS, SCALAR_FIELDS, ResumeService
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -144,9 +144,7 @@ def st_list_update(draw):
             data[f] = draw(st.lists(st_work_experience_entry(), min_size=1, max_size=3))
         elif f == "projects":
             data[f] = draw(st.lists(st_project_entry(), min_size=1, max_size=3))
-        elif f == "highlights":
-            data[f] = draw(st.lists(st_text_value, min_size=1, max_size=5))
-        elif f == "skills_flat":
+        elif f == "highlights" or f == "skills_flat":
             data[f] = draw(st.lists(st_text_value, min_size=1, max_size=5))
         elif f == "tech_stack":
             data[f] = draw(st_tech_stack())
@@ -496,8 +494,9 @@ class TestDocxContentCompleteness:
         target_cities,
         target_roles,
     ):
-        from docx import Document as DocxDocument
         import io
+
+        from docx import Document as DocxDocument
 
         async def _test():
             svc = await _create_service()
@@ -531,8 +530,8 @@ class TestDocxContentCompleteness:
             assert name in full_text, f"name '{name}' not found in DOCX"
             assert phone in full_text, f"phone '{phone}' not found"
             assert email in full_text, f"email '{email}' not found"
-            assert summary in full_text, f"summary not found"
-            assert self_evaluation in full_text, f"self_evaluation not found"
+            assert summary in full_text, "summary not found"
+            assert self_evaluation in full_text, "self_evaluation not found"
 
             for entry in work_entries:
                 assert entry["company"] in full_text, (

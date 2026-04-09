@@ -138,7 +138,6 @@ MEMORY_PROMPT_SECTION = """\
 - `get_memory(category)` — 读取指定分类的记忆，支持 categories 数组批量读取多个分类
 - `search_memory(keyword)` — 在所有分类中按关键词搜索记忆
 - `get_user_cognitive_model()` — 获取用户画像摘要（分类+标题列表），不含正文
-- `list_memory_categories()` — 列出所有分类及条目数量
 - `save_memory(category, title, content)` — 保存记忆条目（用户明确要求时使用）
 - `update_memory(category, title, new_content)` — 更新已有记忆条目（用户明确要求时使用）
 - `delete_memory(category, title)` — 删除记忆条目（用户明确要求时使用）

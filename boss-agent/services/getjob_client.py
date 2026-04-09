@@ -60,7 +60,7 @@ class GetjobClient:
             return {"success": False, "data": None, "error": "getjob 服务响应超时"}
         except httpx.TimeoutException as exc:
             return {"success": False, "data": None, "error": f"请求超时: {exc}"}
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return {"success": False, "data": None, "error": f"请求异常: {exc}"}
 
     @staticmethod

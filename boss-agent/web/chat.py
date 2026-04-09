@@ -25,13 +25,13 @@ _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
+from agent.bootstrap import bootstrap
+from agent.context_builder import ContextBuilder
+from agent.system_prompt import build_full_system_prompt
 from config import load_config
 from db.database import Database
-from agent.bootstrap import bootstrap
 from tools.data.conversation_logger import ConversationLogger
 from tools.data.execution_trace import ExecutionTraceStore
-from agent.system_prompt import build_full_system_prompt
-from agent.context_builder import ContextBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -123,14 +123,17 @@ async def _init_agent(db: Database, api_key: str, base_url: str, model: str) -> 
         _cl_context = cl.context.session
 
         async def _ui_push(notif: TaskNotification) -> None:
-            """后台任务完成 → 推送任务面板更新"""
+            """后台任务完成/超时/失败 → 更新 store + 推送任务面板"""
             try:
                 from chainlit.context import init_ws_context
                 init_ws_context(_cl_context)
                 from services.task_state import TaskStateStore
                 _db = cl.user_session.get("db")
                 if _db:
-                    await _push_task_panel(TaskStateStore(_db))
+                    store = TaskStateStore(_db)
+                    if notif.status in ("timeout", "failed"):
+                        await store.update_status(notif.task_id, notif.status, notif.message)
+                    await _push_task_panel(store)
             except Exception as e:
                 logger.warning("任务面板推送失败: %s", e)
 
@@ -233,38 +236,17 @@ async def on_chat_resume(thread):
                 )
             await cl.Message(content=welcome).send()
 
-    # ---- 恢复 UI 元素 ----
-    # 必须重新 send() 才能渲染 custom elements。
-    # 去重：按 (name, props) 只保留最后一个，防止历史重复累积。
-    # persisted=True：告诉 Chainlit 跳过 DataLayer 写入，不产生新记录。
+    # ---- 恢复 session 数据 ----
     elements = thread.get("elements") or []
-    custom_elements = [e for e in elements if e.get("type") == "custom"]
-    seen = {}
-    for el in custom_elements:
-        key = (el.get("name", ""), el.get("props", ""))
-        seen[key] = el
-    deduped = list(seen.values())
-
-    if deduped:
-        async def _restore_ui_elements():
-            await asyncio.sleep(0.5)
-            try:
-                for el in deduped:
-                    name = el.get("name", "")
-                    props_raw = el.get("props", "{}")
-                    props = json.loads(props_raw) if isinstance(props_raw, str) else (props_raw or {})
-                    element = cl.CustomElement(name=name, props=props, display="inline")
-                    msg = cl.Message(content="", elements=[element])
-                    msg.persisted = True  # 跳过 DataLayer 写入
-                    await msg.send()
-                    if name == "JobList" and props.get("jobs"):
-                        id_map = {j["seq"]: {"id": j["id"], "title": j["title"], "company": j["company"]} for j in props["jobs"]}
-                        cl.user_session.set("job_id_map", id_map)
-                    elif name == "ActionCard":
-                        cl.user_session.set(f"action_card_{props.get('card_type','')}", element)
-            except Exception as e:
-                logger.warning("恢复 UI 元素失败: %s", e)
-        asyncio.create_task(_restore_ui_elements())
+    for el in elements:
+        if el.get("type") != "custom":
+            continue
+        name = el.get("name", "")
+        props_raw = el.get("props", "{}")
+        props = json.loads(props_raw) if isinstance(props_raw, str) else (props_raw or {})
+        if name == "JobList" and props.get("jobs"):
+            id_map = {j["seq"]: {"id": j["id"], "title": j["title"], "company": j["company"]} for j in props["jobs"]}
+            cl.user_session.set("job_id_map", id_map)
 
 
 @cl.on_chat_start
@@ -355,7 +337,6 @@ async def on_scenario_action(action: cl.Action):
 @cl.action_callback("action_card_submit")
 async def on_action_card_submit(action: cl.Action):
     """用户在 ActionCard 上确认执行后的回调。"""
-    import time as _time
     payload = action.payload or {}
     card_type = payload.get("card_type", "unknown")
     params = payload.get("params", {})
@@ -381,8 +362,9 @@ async def on_action_card_submit(action: cl.Action):
 
 async def _execute_generic_tool(tool_name: str, params: dict, card_el):
     """通用 Tool 执行：查找 Tool → 执行 → 结果写任务面板。"""
-    from services.task_state import TaskStateStore, TaskInfo
     import time as _time
+
+    from services.task_state import TaskInfo, TaskStateStore
 
     registry = cl.user_session.get("registry")
     db = cl.user_session.get("db")
@@ -440,10 +422,62 @@ async def _push_task_panel(store):
     }, ensure_ascii=False, default=str))
 
 
+# salaryCode → 月薪下限(K)
+_SALARY_CODE_MIN_K = {
+    "1": 0, "2": 8, "3": 12, "4": 17, "5": 25, "6": 42, "7": 83,
+}
+
+
+async def _post_sync_filter(db, config_data: dict, sync_result: dict) -> int:
+    """同步后过滤不匹配的岗位，返回删除数量。"""
+    clauses: list[str] = []
+    values: list = []
+
+    # 城市过滤（模糊匹配）
+    city = config_data.get("city")
+    if city:
+        # 取第一个城市关键词（可能是"上海"或编码）
+        city_kw = city.split("$")[0].split(",")[0].strip()
+        if city_kw and not city_kw.isdigit():
+            clauses.append("city NOT LIKE ?")
+            values.append(f"%{city_kw}%")
+
+    # 薪资过滤：岗位最高薪资 < 用户期望下限 → 删除
+    salary_code = config_data.get("salaryCode")
+    if salary_code:
+        # 取最低的 code（如 "5" 或 "15$30" 格式）
+        code = salary_code.split("$")[0] if "$" in salary_code else salary_code
+        min_k = _SALARY_CODE_MIN_K.get(code)
+        if min_k and min_k > 0:
+            clauses.append("(salary_max IS NOT NULL AND salary_max > 0 AND salary_max < ?)")
+            values.append(min_k)
+
+    if not clauses:
+        return 0
+
+    # 只删最近同步的（10分钟内更新的）
+    where = " OR ".join(f"({c})" for c in clauses)
+    count_sql = (
+        f"SELECT COUNT(*) as cnt FROM jobs WHERE ({where}) "
+        f"AND updated_at > datetime('now', '-10 minutes')"
+    )
+    rows = await db.execute(count_sql, tuple(values))
+    count = rows[0]["cnt"] if rows else 0
+    if count == 0:
+        return 0
+
+    sql = (
+        f"DELETE FROM jobs WHERE ({where}) "
+        f"AND updated_at > datetime('now', '-10 minutes')"
+    )
+    await db.execute_write(sql, tuple(values))
+    return count
+
+
 async def _execute_start_task(params: dict, card_el):
     """执行爬取：update_config → start_task → 后台轮询 → 推送任务面板"""
-    import time as _time
     import json as _json
+    import time as _time
     getjob_client = cl.user_session.get("getjob_client")
     if not getjob_client:
         if card_el:
@@ -477,22 +511,68 @@ async def _execute_start_task(params: dict, card_el):
         task_id = f"{platform}-{int(_time.time())}"
         db = cl.user_session.get("db")
 
+        # 写入 TaskStateStore，让 /api/tasks 能查到
+        from services.task_state import TaskStateStore, TaskInfo
+        store = TaskStateStore(db) if db else None
+        if store:
+            await store.upsert(TaskInfo(
+                task_id=task_id, name="爬取岗位列表",
+                platform=platform, status="running", progress_text="启动中...",
+            ))
+            await _push_task_panel(store)
+
+        async def _progress(p: str, polls: int, is_running: bool, error_msg: str | None = None) -> None:
+            """轮询时更新进度：查 getjob stats 获取实际数量"""
+            if not store:
+                return
+            if error_msg:
+                await store.update_progress(task_id, f"⚠️ {error_msg}")
+                await _push_task_panel(store)
+                return
+            text = "运行中"
+            try:
+                sr = await getjob_client.get_stats(p)
+                if sr.get("success"):
+                    total = sr["data"].get("kpi", {}).get("total", 0)
+                    if total > 0:
+                        text = f"已采集 {total} 条"
+            except Exception:
+                pass
+            if not is_running:
+                text = "正在完成..."
+            await store.update_progress(task_id, text)
+            await _push_task_panel(store)
+
         async def _on_complete(p: str) -> dict:
             from tools.getjob.platform_sync import SyncJobsTool
             if not db:
                 return {}
-            return await SyncJobsTool().execute({"platform": p}, {"db": db, "getjob_client": getjob_client})
+            sync_result = await SyncJobsTool().execute({"platform": p}, {"db": db, "getjob_client": getjob_client})
+
+            # 同步后过滤：根据用户爬取参数删除不匹配的数据
+            filtered = await _post_sync_filter(db, config_data, sync_result)
+            if filtered:
+                sync_result.setdefault("data", {})["filtered"] = filtered
+
+            if store:
+                msg = "已完成"
+                data = sync_result.get("data", sync_result)
+                inserted = data.get("inserted", 0)
+                total = data.get("total_fetched", 0)
+                if total:
+                    msg = f"同步 {total} 条，新增 {inserted}"
+                    if filtered:
+                        msg += f"，过滤 {filtered} 条"
+                await store.update_status(task_id, "completed", msg)
+                await _push_task_panel(store)
+            return sync_result
 
         task_monitor.start_polling(
             task_id=task_id, platform=platform, client=getjob_client,
+            progress_callback=_progress,
             on_complete=_on_complete,
             agent_busy_check=lambda: cl.user_session.get("agent_busy", False),
         )
-
-    await cl.send_window_message(_json.dumps({
-        "type": "task_panel_update",
-        "tasks": [{"task_id": f"{platform}-{int(_time.time())}", "name": "爬取岗位列表", "platform": platform, "status": "running", "progress_text": "启动中...", "elapsed_s": 0}],
-    }))
 
 
 async def _execute_fetch_detail(params: dict, job_ids: list, card_el):

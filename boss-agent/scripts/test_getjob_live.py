@@ -1,6 +1,7 @@
 """真实测试 GetjobClient 对接 getjob 服务"""
 import asyncio
 import sys
+
 sys.path.insert(0, ".")
 from services.getjob_client import GetjobClient
 

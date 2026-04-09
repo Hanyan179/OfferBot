@@ -13,11 +13,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from config import load_config
-from db.database import Database
 from agent.llm_client import LLMClient
 from agent.memory_extractor import MemoryExtractor
-from tools.data.memory_tools import _get_memory_dir, _parse_sections
+from config import load_config
+from db.database import Database
+from tools.data.memory_tools import _parse_sections
 
 OUTPUT_DIR = Path(__file__).resolve().parent / "output"
 OUTPUT_FILE = OUTPUT_DIR / "memory_test_result.md"

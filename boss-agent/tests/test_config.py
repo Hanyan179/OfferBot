@@ -1,8 +1,10 @@
 """config 模块单元测试"""
 
 import os
+
 import pytest
-from config import Config, load_config, PROJECT_ROOT
+
+from config import PROJECT_ROOT, Config, load_config
 
 
 class TestConfigDefaults:

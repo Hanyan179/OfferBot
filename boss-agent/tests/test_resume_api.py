@@ -1,6 +1,5 @@
 """Tests for resume API endpoints (PUT /api/resume, GET /api/resume/export/docx)."""
 
-import json
 import sys
 from pathlib import Path
 
@@ -11,7 +10,7 @@ from httpx import ASGITransport, AsyncClient
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from db.database import Database
-from web.app import app, _get_db
+from web.app import app
 
 
 @pytest_asyncio.fixture

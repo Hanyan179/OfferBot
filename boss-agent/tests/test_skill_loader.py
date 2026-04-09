@@ -1,9 +1,7 @@
 """SkillLoader 单元测试 — 文件夹格式"""
 
-import pytest
 
-from agent.skill_loader import SkillLoader, SkillInfo, _parse_frontmatter
-
+from agent.skill_loader import SkillInfo, SkillLoader, _parse_frontmatter
 
 # ---------------------------------------------------------------------------
 # Helper: 创建文件夹格式的 Skill
@@ -189,6 +187,7 @@ class TestLoadAll:
     def test_allowed_tools_unregistered_warning(self, tmp_path, caplog):
         """allowed-tools 引用未注册 Tool 记录警告"""
         import logging
+
         from agent.tool_registry import ToolRegistry
         registry = ToolRegistry()
         _make_skill(

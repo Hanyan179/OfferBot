@@ -7,11 +7,11 @@
 import asyncio
 from typing import Any
 
-from hypothesis import given, settings, strategies as st
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from agent.tool_registry import Tool, ToolRegistry
-from tools.meta.activate_toolset import ActivateToolsetTool, VALID_TOOLSETS
-
+from tools.meta.activate_toolset import VALID_TOOLSETS, ActivateToolsetTool
 
 # ---------------------------------------------------------------------------
 # Test helpers

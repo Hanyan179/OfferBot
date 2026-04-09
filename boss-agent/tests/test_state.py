@@ -16,7 +16,6 @@ from agent.state import (
     ToolResult,
 )
 
-
 # --- Helpers ---
 
 def _make_error_record(**overrides) -> ErrorRecord:

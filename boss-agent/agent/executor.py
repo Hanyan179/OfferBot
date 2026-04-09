@@ -13,9 +13,10 @@ import asyncio
 import json
 import logging
 import time
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, AsyncGenerator
+from typing import Any
 
 from agent.llm_client import LLMClient
 from agent.state import (
@@ -236,7 +237,7 @@ class Executor:
                         if isinstance(data, dict):
                             if "success" in data:
                                 summary_parts.append(f"success={data['success']}")
-                            if "error" in data and data["error"]:
+                            if data.get("error"):
                                 summary_parts.append(f"error={data['error']}")
                             if "message" in data:
                                 summary_parts.append(f"message={data['message']}")

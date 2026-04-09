@@ -1,6 +1,6 @@
 ---
 name: 模拟打招呼
-description: 模拟 Boss 直聘打招呼场景，基于用户记忆生成个性化话术
+description: 模拟打招呼场景，基于用户记忆生成个性化话术
 when_to_use: 当用户想要练习打招呼话术、生成打招呼语、或准备投递时
 memory_categories: [language_style, communication_preferences, job_sprint_goals]
 allowed-tools: [get_memory, get_user_cognitive_model, search_memory]
@@ -8,7 +8,7 @@ allowed-tools: [get_memory, get_user_cognitive_model, search_memory]
 
 ## 场景描述
 
-用户想要练习或生成 Boss 直聘的打招呼话术。需要结合用户的语言风格、沟通偏好和求职目标，生成自然、个性化的打招呼语。
+用户想要练习或生成打招呼话术。需要结合用户的语言风格、沟通偏好和求职目标，生成自然、个性化的打招呼语。
 
 ## 执行逻辑
 

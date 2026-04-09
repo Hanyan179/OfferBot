@@ -16,7 +16,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import sys
 from dataclasses import dataclass, field
@@ -520,7 +519,7 @@ class TestToolsetRegistryIntegrity:
         names_after = {s["function"]["name"] for s in schemas_after}
 
         added = names_after - names_before
-        assert CRAWL_TOOL_NAMES == added, (
+        assert added == CRAWL_TOOL_NAMES, (
             f"激活 crawl 后应新增 {CRAWL_TOOL_NAMES}，实际新增 {added}"
         )
 

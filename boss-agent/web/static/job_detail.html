@@ -231,7 +231,11 @@ async function fetchDetail() {
   el.innerHTML = '<div class="ai-loading">正在获取岗位详情数据...</div>';
 
   try {
-    const resp = await fetch(`${API}/api/jobs/${jobId}/fetch-detail`, {method:'POST'});
+    const resp = await fetch(`${API}/api/jobs/${jobId}/fetch-detail`, {
+      method:'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({force: true})
+    });
     const data = await resp.json();
     if (data.success && (data.fetched > 0 || data.skipped > 0)) {
       el.innerHTML = '<div class="ai-loading">详情获取成功，开始 AI 分析...</div>';

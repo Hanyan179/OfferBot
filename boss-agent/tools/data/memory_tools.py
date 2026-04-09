@@ -16,7 +16,6 @@ AI 通过 Memory Tools 读写文件，实现用户认知模型的持久化。
 
 from __future__ import annotations
 
-import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any

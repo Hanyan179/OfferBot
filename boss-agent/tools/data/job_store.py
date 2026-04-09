@@ -7,7 +7,6 @@ SaveJobTool: 保存岗位数据到数据库（以 URL 去重）
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from agent.tool_registry import Tool

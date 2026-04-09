@@ -10,14 +10,13 @@ Property-based and unit tests for sync filtering, upsert protection, and auto-sy
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-from hypothesis import given, settings, strategies as st
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from db.database import Database
 from tools.getjob.platform_sync import _filter_rows, _normalize_city, _upsert_jobs
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -302,7 +301,7 @@ class TestAutoSyncCallbackAndNotification:
 
     def test_on_complete_success_notification_includes_sync_stats(self):
         """When on_complete succeeds, the notification message should include sync stats."""
-        from services.task_monitor import TaskMonitor, TaskNotification
+        from services.task_monitor import TaskMonitor
 
         async def _run():
             monitor = TaskMonitor()
@@ -357,7 +356,7 @@ class TestAutoSyncCallbackAndNotification:
 
     def test_on_complete_failure_notification_includes_error(self):
         """When on_complete fails, the notification should still be created with error info."""
-        from services.task_monitor import TaskMonitor, TaskNotification
+        from services.task_monitor import TaskMonitor
 
         async def _run():
             monitor = TaskMonitor()

@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -175,7 +174,6 @@ class TestDeleteConversation:
     @pytest.mark.anyio
     async def test_delete_active_conversation_creates_new(self, _isolate_conversation_manager):
         """删除活跃对话时，应先创建新对话再删除。"""
-        import time
         mgr = _isolate_conversation_manager
         # 手动创建一个带旧时间戳的对话文件，确保新对话 ID 不同
         old_id = "2025-01-01T00-00-00"

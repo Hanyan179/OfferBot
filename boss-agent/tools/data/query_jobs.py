@@ -109,14 +109,14 @@ class QueryJobsTool(Tool):
             clauses.append("company LIKE ?")
             values.append(f"%{company}%")
         if s_min := params.get("salary_min"):
-            clauses.append("salary_min >= ?")
+            clauses.append("salary_max >= ?")
             values.append(s_min)
         if s_max := params.get("salary_max"):
             clauses.append("salary_min <= ?")
             values.append(s_max)
         if edu := params.get("education"):
-            clauses.append("education = ?")
-            values.append(edu)
+            clauses.append("education LIKE ?")
+            values.append(f"%{edu}%")
         if exp := params.get("experience"):
             clauses.append("experience LIKE ?")
             values.append(f"%{exp}%")
@@ -162,8 +162,7 @@ class QueryJobsTool(Tool):
         sql = (
             f"SELECT id, title, company, salary_min, salary_max, city, url,"
             f" CASE WHEN raw_jd IS NOT NULL AND raw_jd != '' THEN 1 ELSE 0 END as has_jd,"
-            f" CASE WHEN match_detail IS NOT NULL AND match_detail != '' THEN 1 ELSE 0 END as has_analysis,"
-            f" CASE WHEN structured_jd IS NOT NULL AND structured_jd != '' THEN 1 ELSE 0 END as has_rag"
+            f" CASE WHEN match_detail IS NOT NULL AND match_detail != '' THEN 1 ELSE 0 END as has_analysis"
             f" FROM jobs{where} ORDER BY {order_by} LIMIT ?"
         )
         values_with_limit = list(values) + [limit]
@@ -185,7 +184,6 @@ class QueryJobsTool(Tool):
                 "url": r.get("url", ""),
                 "has_jd": bool(r.get("has_jd")),
                 "has_analysis": bool(r.get("has_analysis")),
-                "has_rag": bool(r.get("has_rag")),
             })
 
         # ---- 构建 for_agent（摘要 + id_map）----

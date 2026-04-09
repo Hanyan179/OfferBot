@@ -24,11 +24,11 @@ from pathlib import Path
 # 确保 boss-agent 在 sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from config import load_config
 from db.database import Database
 from services.getjob_client import GetjobClient
-from tools.getjob.fetch_detail import FetchJobDetailTool
 from tools.data.query_jobs import QueryJobsTool
-from config import load_config
+from tools.getjob.fetch_detail import FetchJobDetailTool
 
 
 def pp(label: str, data: dict) -> None:
@@ -39,7 +39,7 @@ def pp(label: str, data: dict) -> None:
     # 对 results 列表截断 jd_preview 避免刷屏
     if "results" in data:
         for r in data["results"]:
-            if "jd_preview" in r and r["jd_preview"]:
+            if r.get("jd_preview"):
                 r["jd_preview"] = r["jd_preview"][:80] + "..."
     if "jobs" in data:
         shown = data.copy()
@@ -85,7 +85,7 @@ async def main() -> None:
     has_jd_ids = [r["id"] for r in has_jd_rows]
     missing_jd_ids = [r["id"] for r in missing_jd_rows]
 
-    print(f"\n准备数据:")
+    print("\n准备数据:")
     print(f"  有 JD 的岗位 IDs: {has_jd_ids}")
     print(f"  缺 JD 的岗位 IDs: {missing_jd_ids}")
 

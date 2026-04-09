@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from agent.state import AgentEvent, AgentState, ExecutionPlan
+from agent.state import AgentEvent, ExecutionPlan
 
 
 @dataclass
@@ -62,13 +62,13 @@ class ExecutionReport:
     def to_markdown(self) -> str:
         """格式化为可读的 Markdown 文本。"""
         lines = [
-            f"## 执行报告",
-            f"",
+            "## 执行报告",
+            "",
             f"**原始指令**: {self.plan_input}",
             f"**总步骤数**: {self.total_steps}",
             f"**完成**: {self.completed_steps} | **失败**: {self.failed_steps} | **跳过**: {self.skipped_steps}",
             f"**总耗时**: {self.total_elapsed_seconds:.2f}s",
-            f"",
+            "",
         ]
         for sr in self.step_reports:
             icon = {"success": "✅", "failed": "❌", "skipped": "⏭️"}.get(sr.status, "❓")

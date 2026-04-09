@@ -5,9 +5,8 @@
 """
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-
 
 # 项目根目录（boss-agent/）
 PROJECT_ROOT = Path(__file__).resolve().parent

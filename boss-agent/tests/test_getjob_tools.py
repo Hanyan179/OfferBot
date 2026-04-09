@@ -14,20 +14,20 @@ getjob Tool 层单元测试
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 import pytest_asyncio
-from unittest.mock import AsyncMock, patch, MagicMock
 
 from db.database import Database
-from tools.getjob.platform_status import PlatformStatusTool
-from tools.getjob.platform_control import PlatformStartTaskTool, PlatformStopTaskTool
-from tools.getjob.platform_config import PlatformGetConfigTool, PlatformUpdateConfigTool
-from tools.getjob.platform_sync import SyncJobsTool, parse_salary, format_salary
-from tools.getjob.platform_stats import PlatformStatsTool
-from tools.getjob.platform_deliver import PlatformDeliverTool
 from tools.getjob.fetch_detail import FetchJobDetailTool
+from tools.getjob.platform_config import PlatformGetConfigTool, PlatformUpdateConfigTool
+from tools.getjob.platform_control import PlatformStartTaskTool, PlatformStopTaskTool
+from tools.getjob.platform_deliver import PlatformDeliverTool
+from tools.getjob.platform_stats import PlatformStatsTool
+from tools.getjob.platform_status import PlatformStatusTool
+from tools.getjob.platform_sync import SyncJobsTool, format_salary, parse_salary
 from tools.getjob.service_manager import GetjobServiceManagerTool
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

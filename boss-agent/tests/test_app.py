@@ -42,11 +42,12 @@ class TestTemplateFiles:
 
 class TestChatModule:
     def test_chat_import(self):
-        from web.chat import SCENARIO_CARDS, handle_user_message
+        from web.chat import SCENARIO_CARDS
         assert len(SCENARIO_CARDS) == 4
 
     def test_handle_is_coroutine(self):
         import inspect
+
         from web.chat import handle_user_message
         assert inspect.iscoroutinefunction(handle_user_message)
 
@@ -74,6 +75,7 @@ class TestLoadActiveResume:
     @pytest.mark.asyncio
     async def test_loads_active_resume(self, db):
         import json
+
         from web.app import _load_active_resume
         skills = ["Python", "FastAPI", "RAG"]
         work_exp = [{"company": "TestCo", "role": "Dev", "duration": "2023-now", "description": "Built stuff"}]
@@ -104,6 +106,7 @@ class TestLoadActiveResume:
     @pytest.mark.asyncio
     async def test_tech_stack_dict_flattened(self, db):
         import json
+
         from web.app import _load_active_resume
         tech_dict = {"AI": ["PyTorch", "LangChain"], "Web": ["FastAPI"]}
         await db.execute_write(

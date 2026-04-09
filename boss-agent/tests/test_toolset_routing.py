@@ -243,10 +243,9 @@ class TestBootstrapToolsetAssignment:
 # ---------------------------------------------------------------------------
 
 import inspect
+
 from agent.system_prompt import (
-    SYSTEM_PROMPT,
     TOOLSET_ROUTING_GUIDE,
-    MEMORY_PROMPT_SECTION,
     build_full_system_prompt,
 )
 

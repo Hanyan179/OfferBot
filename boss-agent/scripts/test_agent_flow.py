@@ -15,11 +15,11 @@ import time
 
 sys.path.insert(0, ".")
 
-from services.getjob_client import GetjobClient
-from tools.getjob.service_manager import GetjobServiceManagerTool
-from tools.getjob.platform_sync import _map_liepin, _upsert_jobs
-from db.database import Database
 from config import load_config
+from db.database import Database
+from services.getjob_client import GetjobClient
+from tools.getjob.platform_sync import _map_liepin, _upsert_jobs
+from tools.getjob.service_manager import GetjobServiceManagerTool
 
 
 async def main():

@@ -182,7 +182,6 @@ Step 1: 检查画像 → Step 2: 检查服务/登录 → Step 3: 配置+爬取
 | 规则 | 检查方式 | 处理 |
 |------|---------|------|
 | 无效数据 | title 为空或 url 为空 | 排除 |
-| 黑名单公司 | company 在 blacklist 表中 | 排除 |
 | 城市不匹配 | city 不在 target_cities 中 | 排除（除非用户说"不限城市"） |
 | 薪资不达标 | salary_max < salary_min（用户期望） | 排除 |
 | 学历不匹配 | education 要求高于用户学历 | 标记但不排除（可能有弹性） |
@@ -201,7 +200,6 @@ query_jobs(city="{city}", salary_min={user_salary_min}, limit=200)
 > 📊 过滤结果：{total} 条 → 过滤后 {filtered} 条有效候选
 > - 排除 {n1} 条（城市不匹配）
 > - 排除 {n2} 条（薪资不达标）
-> - 排除 {n3} 条（黑名单公司）
 
 ---
 

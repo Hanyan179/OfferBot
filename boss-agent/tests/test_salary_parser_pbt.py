@@ -13,7 +13,8 @@ format, parse_salary then format_salary SHALL produce an equivalent string.
 
 from __future__ import annotations
 
-from hypothesis import given, settings, strategies as st
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from tools.getjob.platform_sync import format_salary, parse_salary
 

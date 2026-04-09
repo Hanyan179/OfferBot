@@ -14,12 +14,10 @@ import tempfile
 from pathlib import Path
 
 import hypothesis.strategies as st
-import pytest
 from hypothesis import given, settings
 
 from agent.conversation_manager import ConversationManager
 from tools.data.chat_history import ChatHistoryStore
-
 
 # ---------------------------------------------------------------------------
 # Fixtures & Helpers

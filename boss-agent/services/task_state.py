@@ -80,10 +80,13 @@ class TaskStateStore:
 
     async def get_active(self) -> list[dict]:
         """运行中 + 最近 30 分钟完成的"""
+        from datetime import timedelta
+        cutoff = (datetime.now() - timedelta(minutes=30)).isoformat()
         rows = await self._db.execute(
             "SELECT * FROM tasks WHERE status='running' "
-            "OR (finished_at IS NOT NULL AND finished_at > datetime('now', '-30 minutes')) "
-            "ORDER BY started_at DESC"
+            "OR (finished_at IS NOT NULL AND finished_at > ?) "
+            "ORDER BY started_at DESC",
+            (cutoff,),
         )
         return [self._row_to_dict(r) for r in rows]
 

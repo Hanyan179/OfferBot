@@ -24,10 +24,9 @@ from httpx import ASGITransport, AsyncClient
 # 确保 boss-agent 目录在 sys.path 中
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from web.app import app
 from agent.conversation_manager import ConversationManager
 from tools.data.chat_history import ChatHistoryStore
-
+from web.app import app
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -200,8 +199,9 @@ class TestSimulatedUserScenario:
 
     def test_tool_display_names_are_chinese(self):
         """验证 Tool 显示名包含中文字符。"""
-        from agent.bootstrap import create_tool_registry
         import re
+
+        from agent.bootstrap import create_tool_registry
 
         registry, _skill_loader = create_tool_registry()
         # 中文字符正则

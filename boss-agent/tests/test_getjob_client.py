@@ -7,11 +7,11 @@ GetjobClient 单元测试
 from __future__ import annotations
 
 import json
-import pytest
+
 import httpx
+import pytest
 
-from services.getjob_client import GetjobClient, CONNECTION_REFUSED_MARKER
-
+from services.getjob_client import GetjobClient
 
 # ---------------------------------------------------------------------------
 # Helpers

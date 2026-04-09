@@ -6,11 +6,8 @@ Bootstrap 模块单元测试
 
 from __future__ import annotations
 
-import pytest
-
-from agent.bootstrap import create_tool_registry, bootstrap
+from agent.bootstrap import bootstrap, create_tool_registry
 from agent.tool_registry import ToolRegistry
-
 
 # Expected tool names from Phase 3 Data Tools + Web Tools + Getjob Tools + AI Tools
 EXPECTED_TOOLS = {

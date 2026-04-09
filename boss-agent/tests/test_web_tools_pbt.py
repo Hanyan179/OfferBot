@@ -38,22 +38,22 @@ from __future__ import annotations
 
 import asyncio
 
-from hypothesis import given, settings, strategies as st
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from tools.browser.web_fetch import (
+    TTLCache,
+    WebFetchTool,
     normalize_url,
     truncate_content,
     validate_url,
-    TTLCache,
-    WebFetchTool,
 )
 from tools.browser.web_search import (
-    validate_query,
+    WebSearchTool,
     clamp_max_results,
     parse_search_response,
-    WebSearchTool,
+    validate_query,
 )
-
 
 # ---------------------------------------------------------------------------
 # Strategies
@@ -366,8 +366,8 @@ class TestSearchResultStructure:
     )
     def test_search_metadata_structure(self, query: str, results: list):
         """模拟成功的搜索返回，验证 metadata 结构完整。"""
+
         import httpx as _httpx
-        import json
 
         api_response = {"webPages": {"value": results}}
 

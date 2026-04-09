@@ -8,7 +8,7 @@ AgentEvent、ToolCall、ToolResult、ErrorRecord、Message。
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
@@ -23,7 +23,7 @@ class Message:
         return {"role": self.role, "content": self.content}
 
     @staticmethod
-    def from_dict(data: dict[str, Any]) -> "Message":
+    def from_dict(data: dict[str, Any]) -> Message:
         return Message(role=data["role"], content=data["content"])
 
 
@@ -50,7 +50,7 @@ class ErrorRecord:
         }
 
     @staticmethod
-    def from_dict(data: dict[str, Any]) -> "ErrorRecord":
+    def from_dict(data: dict[str, Any]) -> ErrorRecord:
         return ErrorRecord(
             timestamp=datetime.fromisoformat(data["timestamp"]),
             step_index=data["step_index"],
@@ -79,7 +79,7 @@ class PlanStep:
         }
 
     @staticmethod
-    def from_dict(data: dict[str, Any]) -> "PlanStep":
+    def from_dict(data: dict[str, Any]) -> PlanStep:
         return PlanStep(
             description=data["description"],
             tool_name=data["tool_name"],
@@ -103,7 +103,7 @@ class ExecutionPlan:
         }
 
     @staticmethod
-    def from_dict(data: dict[str, Any]) -> "ExecutionPlan":
+    def from_dict(data: dict[str, Any]) -> ExecutionPlan:
         return ExecutionPlan(
             steps=tuple(PlanStep.from_dict(s) for s in data["steps"]),
             original_input=data["original_input"],
@@ -121,7 +121,7 @@ class ToolCall:
         return {"tool_name": self.tool_name, "arguments": self.arguments}
 
     @staticmethod
-    def from_dict(data: dict[str, Any]) -> "ToolCall":
+    def from_dict(data: dict[str, Any]) -> ToolCall:
         return ToolCall(
             tool_name=data["tool_name"],
             arguments=dict(data["arguments"]),
@@ -145,7 +145,7 @@ class ToolResult:
         }
 
     @staticmethod
-    def from_dict(data: dict[str, Any]) -> "ToolResult":
+    def from_dict(data: dict[str, Any]) -> ToolResult:
         return ToolResult(
             success=data["success"],
             data=dict(data["data"]),
@@ -164,7 +164,7 @@ class AgentEvent:
     # --- Factory methods ---
 
     @staticmethod
-    def thought(content: str) -> "AgentEvent":
+    def thought(content: str) -> AgentEvent:
         return AgentEvent(
             type="thought",
             data={"content": content},
@@ -172,7 +172,7 @@ class AgentEvent:
         )
 
     @staticmethod
-    def tool_start(tool_call: ToolCall) -> "AgentEvent":
+    def tool_start(tool_call: ToolCall) -> AgentEvent:
         return AgentEvent(
             type="tool_start",
             data={"tool_name": tool_call.tool_name, "arguments": tool_call.arguments},
@@ -180,7 +180,7 @@ class AgentEvent:
         )
 
     @staticmethod
-    def tool_result(result: ToolResult) -> "AgentEvent":
+    def tool_result(result: ToolResult) -> AgentEvent:
         return AgentEvent(
             type="tool_result",
             data={"success": result.success, "data": result.data},
@@ -188,7 +188,7 @@ class AgentEvent:
         )
 
     @staticmethod
-    def completed(state: "AgentState") -> "AgentEvent":
+    def completed(state: AgentState) -> AgentEvent:
         return AgentEvent(
             type="completed",
             data={"turn_count": state.turn_count, "current_step": state.current_step},
@@ -196,7 +196,7 @@ class AgentEvent:
         )
 
     @staticmethod
-    def error(message: str, step_index: int = -1) -> "AgentEvent":
+    def error(message: str, step_index: int = -1) -> AgentEvent:
         return AgentEvent(
             type="error",
             data={"message": message, "step_index": step_index},
@@ -204,7 +204,7 @@ class AgentEvent:
         )
 
     @staticmethod
-    def max_turns_reached(state: "AgentState") -> "AgentEvent":
+    def max_turns_reached(state: AgentState) -> AgentEvent:
         return AgentEvent(
             type="max_turns_reached",
             data={"turn_count": state.turn_count, "current_step": state.current_step},
@@ -212,7 +212,7 @@ class AgentEvent:
         )
 
     @staticmethod
-    def action_card(card_data: dict[str, Any]) -> "AgentEvent":
+    def action_card(card_data: dict[str, Any]) -> AgentEvent:
         return AgentEvent(
             type="action_card",
             data=card_data,
@@ -220,7 +220,7 @@ class AgentEvent:
         )
 
     @staticmethod
-    def ui_render(render_data: dict[str, Any]) -> "AgentEvent":
+    def ui_render(render_data: dict[str, Any]) -> AgentEvent:
         return AgentEvent(
             type="ui_render",
             data=render_data,
@@ -235,7 +235,7 @@ class AgentEvent:
         }
 
     @staticmethod
-    def from_dict(data: dict[str, Any]) -> "AgentEvent":
+    def from_dict(data: dict[str, Any]) -> AgentEvent:
         return AgentEvent(
             type=data["type"],
             data=dict(data["data"]),
@@ -258,7 +258,7 @@ class AgentState:
     turn_count: int
 
     @staticmethod
-    def initial(plan: ExecutionPlan) -> "AgentState":
+    def initial(plan: ExecutionPlan) -> AgentState:
         """从执行计划创建初始状态"""
         return AgentState(
             messages=(Message(role="user", content=plan.original_input),),
@@ -278,7 +278,7 @@ class AgentState:
         }
 
     @staticmethod
-    def from_dict(data: dict[str, Any]) -> "AgentState":
+    def from_dict(data: dict[str, Any]) -> AgentState:
         return AgentState(
             messages=tuple(Message.from_dict(m) for m in data["messages"]),
             current_step=data["current_step"],

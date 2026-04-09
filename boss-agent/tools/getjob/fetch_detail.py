@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+
 from agent.tool_registry import Tool
 
 logger = logging.getLogger(__name__)
@@ -105,8 +106,9 @@ class FetchJobDetailTool(Tool):
             return {"success": False, "error": f"未找到 ID 为 {job_ids} 的岗位"}
 
         # 注册任务到全局状态（供前端任务面板显示）
-        from services.task_state import TaskStateStore, TaskInfo
         import time as _time
+
+        from services.task_state import TaskInfo, TaskStateStore
         task_id = f"fetch-detail-{int(_time.time())}"
         store = TaskStateStore(db)
         await store.upsert(TaskInfo(
@@ -146,6 +148,13 @@ class FetchJobDetailTool(Tool):
                 result = await client.fetch_job_detail("liepin", url)
                 if result.get("success"):
                     jd_text = result.get("data", {}).get("jd", "")
+                    # JD 为空时自动重试一次
+                    if not jd_text:
+                        import asyncio
+                        await asyncio.sleep(2)
+                        result = await client.fetch_job_detail("liepin", url)
+                        if result.get("success"):
+                            jd_text = result.get("data", {}).get("jd", "")
                     if jd_text:
                         await db.execute_write(
                             "UPDATE jobs SET raw_jd = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",

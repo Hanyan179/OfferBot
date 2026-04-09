@@ -15,9 +15,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from agent.planner import Planner
-from agent.state import AgentState, ExecutionPlan, Message, PlanStep, ErrorRecord
+from agent.state import AgentState, ErrorRecord, ExecutionPlan, Message, PlanStep
 from agent.tool_registry import Tool, ToolRegistry
-
 
 # ---------------------------------------------------------------------------
 # Test helpers

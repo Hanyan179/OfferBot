@@ -16,16 +16,12 @@ import pytest
 
 from agent.executor import Executor, Thought
 from agent.state import (
-    AgentEvent,
-    AgentState,
     ExecutionPlan,
     Message,
     PlanStep,
     ToolCall,
-    ToolResult,
 )
 from agent.tool_registry import Tool, ToolRegistry
-
 
 # ---------------------------------------------------------------------------
 # Test helpers

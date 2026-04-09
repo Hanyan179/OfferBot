@@ -11,9 +11,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from agent.bootstrap import create_tool_registry
 from agent.llm_client import LLMClient
 from agent.planner import Planner
-from agent.bootstrap import create_tool_registry
 
 
 async def main():
@@ -29,7 +29,7 @@ async def main():
         print("❌ 请提供 API Key: python scripts/test_e2e_llm.py <api_key> [base_url] [model]")
         sys.exit(1)
 
-    print(f"🔧 配置:")
+    print("🔧 配置:")
     print(f"   Base URL: {base_url}")
     print(f"   Model:    {model}")
     print()

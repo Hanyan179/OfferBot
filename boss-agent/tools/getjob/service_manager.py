@@ -8,13 +8,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
-import signal
 from pathlib import Path
 from typing import Any
 
 from agent.tool_registry import Tool
-from services.getjob_client import GetjobClient, CONNECTION_REFUSED_MARKER
+from services.getjob_client import GetjobClient
 
 logger = logging.getLogger(__name__)
 
@@ -148,7 +146,7 @@ class GetjobServiceManagerTool(Tool):
             proc.terminate()
             try:
                 await asyncio.wait_for(proc.wait(), timeout=10)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 proc.kill()
             GetjobServiceManagerTool._process = None
             return {"success": True, "message": "getjob 服务已停止"}

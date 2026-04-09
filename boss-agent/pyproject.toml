@@ -1,0 +1,48 @@
+[project]
+name = "moobot"
+version = "0.1.0"
+description = "AI 求职顾问 Agent"
+requires-python = ">=3.11"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+src = ["."]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+    "RUF",  # ruff-specific
+]
+ignore = [
+    "E402",   # module level import not at top（延迟 import 是项目常见模式）
+    "E501",   # line too long（交给 formatter）
+    "B008",   # function call in default argument（FastAPI Depends 需要）
+    "RUF001", # ambiguous unicode（中文项目正常）
+    "RUF002", # ambiguous unicode in docstring（中文项目正常）
+    "RUF003", # ambiguous unicode in comment（中文项目正常）
+    "RUF012", # mutable class variable（dataclass 场景多）
+    "SIM108", # ternary operator（可读性优先）
+    "UP007",  # Optional → X | None（渐进式迁移）
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["agent", "tools", "db", "services", "web"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "pbt: property-based tests (hypothesis)",
+    "slow: slow tests",
+]

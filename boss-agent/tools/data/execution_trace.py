@@ -80,7 +80,7 @@ class ExecutionTraceStore:
             return []
 
         traces = []
-        with open(filepath, "r", encoding="utf-8") as f:
+        with open(filepath, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if not line:

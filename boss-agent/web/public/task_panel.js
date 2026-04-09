@@ -232,6 +232,14 @@
     return s < 60 ? s + 's' : Math.floor(s / 60) + 'm' + (s % 60) + 's';
   }
 
+  function fmtStarted(iso) {
+    if (!iso) return '';
+    try {
+      const d = new Date(iso);
+      return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
+    } catch { return ''; }
+  }
+
   function parsePct(text) {
     if (!text) return 0;
     const m = text.match(/^(\d+)\s*\/\s*(\d+)/);
@@ -258,7 +266,7 @@
             ${isRunning ? `<button class="tp-stop-btn" onclick="window._tpStop('${t.task_id}','${t.platform}')">停止</button>` : ''}
           </div>
           ${isRunning && pct > 0 ? `<div class="tp-progress-bar"><div class="tp-progress-fill" style="width:${pct}%;background:${st.color};"></div></div>` : ''}
-          <div class="tp-meta"><span>${t.progress_text || st.label}</span><span>${fmtTime(t.elapsed_s)}</span></div>
+          <div class="tp-meta"><span>${t.progress_text || st.label}</span><span>${fmtStarted(t.started_at)}${t.started_at ? ' · ' : ''}${fmtTime(t.elapsed_s)}</span></div>
         </div>
       `;
     }).join('');

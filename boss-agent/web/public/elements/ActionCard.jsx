@@ -29,6 +29,7 @@ import { Play, X } from 'lucide-react'
 export default function ActionCard() {
   const fields = props.fields || []
   const jobs = props.jobs || []
+
   const status = props.status || "pending"
 
   const [values, setValues] = useState(() => {

@@ -4,9 +4,9 @@
 platform_start_task, platform_stop_task, sync_jobs, save_application
 """
 import asyncio
-import json
 import sys
 import time
+
 import httpx
 
 BASE = "http://localhost:7860"

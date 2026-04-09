@@ -33,7 +33,8 @@ from __future__ import annotations
 
 import asyncio
 
-from hypothesis import given, settings, strategies as st
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from db.database import Database
 from tools.data.query_jobs import QueryJobsTool

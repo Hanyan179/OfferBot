@@ -15,19 +15,17 @@ from __future__ import annotations
 
 import json
 from types import SimpleNamespace
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from agent.memory_extractor import (
-    EXTRACT_PROMPT,
-    MemoryExtractor,
     _ALLOWED_TOOLS,
     _MAX_EXTRACT_TURNS,
+    EXTRACT_PROMPT,
+    MemoryExtractor,
 )
 from tools.data.memory_tools import CATEGORY_FILE_MAP
-
 
 # ---------------------------------------------------------------------------
 # Helpers

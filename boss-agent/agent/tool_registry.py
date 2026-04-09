@@ -38,6 +38,25 @@ class Tool(ABC):
         return self.name
 
     @property
+    def response_schema(self) -> dict:
+        """JSON Schema 格式的返回值定义，用于契约验证和自动文档生成。
+
+        子类应覆盖此属性，声明 execute() 的返回结构。
+        默认返回空 schema（不做验证）。
+        """
+        return {}
+
+    @property
+    def context_deps(self) -> list[str]:
+        """声明 execute() 需要的 context 字段列表。
+
+        例如 ["db"] 表示需要 context["db"]，
+        ["db", "getjob_client"] 表示需要两个依赖。
+        默认返回空列表。
+        """
+        return []
+
+    @property
     def is_concurrency_safe(self) -> bool:
         """是否可并发执行（只读 Tool 返回 True）"""
         return False

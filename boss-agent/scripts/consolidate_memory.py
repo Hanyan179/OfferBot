@@ -22,10 +22,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from agent.llm_client import LLMClient
 from config import load_config
 from db.database import Database
-from agent.llm_client import LLMClient
-from tools.data.memory_tools import _parse_sections, _get_display_name, CATEGORY_FILE_MAP
+from tools.data.memory_tools import CATEGORY_FILE_MAP, _get_display_name, _parse_sections
 
 OUTPUT_DIR = Path(__file__).resolve().parent / "output"
 REPORT_FILE = OUTPUT_DIR / "consolidate_report.md"
