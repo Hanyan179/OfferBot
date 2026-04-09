@@ -16,8 +16,6 @@ from agent.tool_registry import ToolRegistry
 EXPECTED_TOOLS = {
     "save_job",
     "save_application",
-    "update_interview_status",
-    "get_interview_funnel",
     "get_stats",
     "add_to_blacklist",
     "remove_from_blacklist",

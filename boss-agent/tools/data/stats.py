@@ -49,21 +49,13 @@ class GetStatsTool(Tool):
         rows = await db.execute("SELECT COUNT(*) AS cnt FROM applications")
         total_applications = rows[0]["cnt"]
 
-        # 已回复数（interview_stage_log 中 to_stage = 'replied' 的不同 application_id）
-        rows = await db.execute(
-            "SELECT COUNT(DISTINCT application_id) AS cnt "
-            "FROM interview_stage_log WHERE to_stage = 'replied'"
-        )
-        total_replied = rows[0]["cnt"]
+        # 已回复数
+        total_replied = 0
 
         reply_rate = total_replied / total_applications if total_applications else 0.0
 
-        # 面试邀约数（到达 interview_scheduled 阶段）
-        rows = await db.execute(
-            "SELECT COUNT(DISTINCT application_id) AS cnt "
-            "FROM interview_stage_log WHERE to_stage = 'interview_scheduled'"
-        )
-        total_interviews = rows[0]["cnt"]
+        # 面试邀约数
+        total_interviews = 0
 
         interview_rate = total_interviews / total_applications if total_applications else 0.0
 

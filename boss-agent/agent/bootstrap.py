@@ -15,10 +15,6 @@ from db.database import Database
 # Data Tools
 from tools.data.job_store import SaveJobTool
 from tools.data.application_store import SaveApplicationTool
-from tools.data.interview_tracker import (
-    GetInterviewFunnelTool,
-    UpdateInterviewStatusTool,
-)
 from tools.data.stats import GetStatsTool
 from tools.data.blacklist import AddToBlacklistTool, RemoveFromBlacklistTool
 from tools.data.export import ExportCSVTool
@@ -70,8 +66,6 @@ def create_tool_registry() -> tuple[ToolRegistry, SkillLoader]:
     # --- Data Tools ---
     registry.register(SaveJobTool())
     registry.register(SaveApplicationTool())
-    registry.register(UpdateInterviewStatusTool())
-    registry.register(GetInterviewFunnelTool())
     registry.register(GetStatsTool())
     registry.register(AddToBlacklistTool())
     registry.register(RemoveFromBlacklistTool())

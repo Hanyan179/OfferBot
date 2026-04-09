@@ -16,10 +16,8 @@ class TestAppImport:
         assert app.title == "Boss Agent"
 
     def test_data_helpers_exist(self):
-        from web.app import _load_jobs, _load_interviews, _load_overview
+        from web.app import _load_jobs
         assert callable(_load_jobs)
-        assert callable(_load_interviews)
-        assert callable(_load_overview)
 
 
 class TestHelperFunctions:
@@ -30,19 +28,6 @@ class TestHelperFunctions:
         assert _format_salary(None, 50) == "50K"
         assert _format_salary(None, None) == "面议"
 
-    def test_stage_color(self):
-        from web.app import _stage_color
-        assert _stage_color("offer") == "green"
-        assert _stage_color("rejected") == "red"
-        assert _stage_color("withdrawn") == "red"
-        assert _stage_color("round_1") == "green"
-        assert _stage_color("applied") == "yellow"
-
-    def test_stage_labels(self):
-        from web.app import STAGE_LABELS
-        assert STAGE_LABELS["applied"] == "已投递"
-        assert STAGE_LABELS["offer"] == "Offer"
-
     def test_resume_loader(self):
         from web.app import _load_active_resume
         assert callable(_load_active_resume)
@@ -51,7 +36,7 @@ class TestHelperFunctions:
 class TestTemplateFiles:
     def test_templates_exist(self):
         tpl_dir = Path(__file__).resolve().parent.parent / "web" / "templates"
-        for name in ["base.html", "jobs.html", "resume.html", "interviews.html", "overview.html"]:
+        for name in ["base.html", "jobs.html", "resume.html"]:
             assert (tpl_dir / name).exists(), f"{name} not found"
 
 
@@ -199,120 +184,4 @@ class TestLoadJobs:
         assert result[0]["score"] == 0
 
 
-class TestLoadInterviews:
-    """Test _load_interviews reads from SQLite correctly."""
 
-    @pytest_asyncio.fixture
-    async def db(self, tmp_path):
-        from db.database import Database
-        db = Database(str(tmp_path / "test.db"))
-        await db.connect()
-        await db.init_schema()
-        yield db
-        await db.close()
-
-    @pytest.mark.asyncio
-    async def test_empty_db(self, db):
-        from web.app import _load_interviews
-        funnel, interviews = await _load_interviews(db)
-        assert funnel[0]["count"] == 0  # 投递 = 0
-        assert interviews == []
-
-    @pytest.mark.asyncio
-    async def test_with_applications(self, db):
-        from web.app import _load_interviews
-        await db.execute_write(
-            "INSERT INTO jobs (url, title, company) VALUES (?, ?, ?)",
-            ("https://a.com/1", "AI工程师", "字节跳动"),
-        )
-        await db.execute_write(
-            "INSERT INTO applications (job_id, status) VALUES (?, ?)", (1, "sent"),
-        )
-        funnel, interviews = await _load_interviews(db)
-        assert funnel[0]["count"] == 1  # 投递 = 1
-        assert len(interviews) == 1
-        assert interviews[0]["title"] == "AI工程师"
-        assert interviews[0]["stage"] == "applied"
-        assert interviews[0]["stage_label"] == "已投递"
-
-    @pytest.mark.asyncio
-    async def test_with_interview_tracking(self, db):
-        from web.app import _load_interviews
-        await db.execute_write(
-            "INSERT INTO jobs (url, title, company) VALUES (?, ?, ?)",
-            ("https://a.com/1", "NLP算法", "阿里"),
-        )
-        await db.execute_write(
-            "INSERT INTO applications (job_id, status) VALUES (?, ?)", (1, "sent"),
-        )
-        await db.execute_write(
-            "INSERT INTO interview_tracking (application_id, stage) VALUES (?, ?)",
-            (1, "round_2"),
-        )
-        await db.execute_write(
-            "INSERT INTO interview_stage_log (application_id, from_stage, to_stage) VALUES (?, ?, ?)",
-            (1, "applied", "viewed"),
-        )
-        await db.execute_write(
-            "INSERT INTO interview_stage_log (application_id, from_stage, to_stage) VALUES (?, ?, ?)",
-            (1, "viewed", "round_2"),
-        )
-        funnel, interviews = await _load_interviews(db)
-        assert interviews[0]["stage"] == "round_2"
-        assert interviews[0]["stage_label"] == "二面"
-
-
-class TestLoadOverview:
-    """Test _load_overview reads from SQLite correctly."""
-
-    @pytest_asyncio.fixture
-    async def db(self, tmp_path):
-        from db.database import Database
-        db = Database(str(tmp_path / "test.db"))
-        await db.connect()
-        await db.init_schema()
-        yield db
-        await db.close()
-
-    @pytest.mark.asyncio
-    async def test_empty_db(self, db):
-        from web.app import _load_overview
-        result = await _load_overview(db)
-        assert result["stats"]["active"] == 0
-        assert result["stats"]["offers"] == 0
-        assert result["cards"] == []
-
-    @pytest.mark.asyncio
-    async def test_with_data(self, db):
-        from web.app import _load_overview
-        await db.execute_write(
-            "INSERT INTO jobs (url, title, company, match_score) VALUES (?, ?, ?, ?)",
-            ("https://a.com/1", "AI工程师", "字节跳动", 92.0),
-        )
-        await db.execute_write(
-            "INSERT INTO applications (job_id, status) VALUES (?, ?)", (1, "sent"),
-        )
-        result = await _load_overview(db)
-        assert result["stats"]["active"] == 1
-        assert len(result["cards"]) == 1
-        assert result["cards"][0]["title"] == "AI工程师"
-        assert result["cards"][0]["score"] == "92%"
-        assert result["cards"][0]["stage"] == "已投递"
-
-    @pytest.mark.asyncio
-    async def test_offer_counted(self, db):
-        from web.app import _load_overview
-        await db.execute_write(
-            "INSERT INTO jobs (url, title, company) VALUES (?, ?, ?)",
-            ("https://a.com/1", "岗位A", "公司A"),
-        )
-        await db.execute_write(
-            "INSERT INTO applications (job_id, status) VALUES (?, ?)", (1, "sent"),
-        )
-        await db.execute_write(
-            "INSERT INTO interview_tracking (application_id, stage) VALUES (?, ?)",
-            (1, "offer"),
-        )
-        result = await _load_overview(db)
-        assert result["stats"]["offers"] == 1
-        assert result["stats"]["active"] == 0  # offer is terminal

@@ -213,15 +213,7 @@ class Executor:
                         if result_parsed.get("action") == "confirm_required":
                             yield AgentEvent.action_card(result_parsed)
                             is_action_card = True
-                            # action_card 是异步任务，不需要 AI 等待
-                            # 直接告诉 LLM 任务已提交，立即结束本轮 loop
-                            card_type = result_parsed.get("card_type", "unknown")
-                            yield AgentEvent(
-                                type="assistant_message",
-                                data={"content": f"已为你生成操作卡片，请在上方确认参数后点击执行。任务启动后可以在右侧面板查看进度，我们可以继续聊其他的 😊"},
-                                timestamp=datetime.now(),
-                            )
-                            return  # 立即结束 loop，不让 LLM 继续轮询
+                            return  # 立即结束 loop
                         elif "for_ui" in result_parsed and "for_agent" in result_parsed:
                             # 结果分流：for_ui 推前端渲染，for_agent 给 LLM
                             yield AgentEvent.ui_render({

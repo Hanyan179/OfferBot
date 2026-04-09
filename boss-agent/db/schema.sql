@@ -185,27 +185,6 @@ CREATE TABLE IF NOT EXISTS applications (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 面试追踪表
-CREATE TABLE IF NOT EXISTS interview_tracking (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    application_id INTEGER NOT NULL REFERENCES applications(id),
-    stage TEXT NOT NULL DEFAULT 'applied',
-    stage_changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    notes TEXT,
-    interview_time TIMESTAMP,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- 面试状态变更日志
-CREATE TABLE IF NOT EXISTS interview_stage_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    application_id INTEGER NOT NULL REFERENCES applications(id),
-    from_stage TEXT,
-    to_stage TEXT NOT NULL,
-    changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    notes TEXT
-);
-
 -- ============================================================
 -- 五、知识层：RAG 知识库索引
 -- ============================================================

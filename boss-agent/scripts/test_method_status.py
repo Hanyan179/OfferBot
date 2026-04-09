@@ -91,13 +91,6 @@ SCENARIOS = [
         "expected_tools": ["job_count"],
         "status_tag": "✅",
     },
-    {
-        "id": "S6-3",
-        "name": "get_interview_funnel",
-        "message": "查看我的面试漏斗数据",
-        "expected_tools": ["get_interview_funnel"],
-        "status_tag": "🔧",
-    },
 ]
 
 

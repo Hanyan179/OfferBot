@@ -155,14 +155,14 @@ def _tool_names(registry, toolset: str) -> set[str]:
 class TestBootstrapToolsetAssignment:
     """Requirements 7.1-7.8: bootstrap 后各工具的 toolset 归属正确。"""
 
-    # Req 7.1: core 工具集包含 11 个工具
+    # Req 7.1: core 工具集包含 10 个工具
     def test_core_toolset_count(self, registry):
-        assert len(_tool_names(registry, "core")) == 11
+        assert len(_tool_names(registry, "core")) == 10
 
     def test_core_toolset_names(self, registry):
         expected = {
             "get_user_profile", "query_jobs", "rag_query", "get_stats",
-            "job_count", "get_interview_funnel", "get_memory", "search_memory",
+            "job_count", "get_memory", "search_memory",
             "get_user_cognitive_model", "activate_toolset", "get_data_status",
         }
         assert _tool_names(registry, "core") == expected
@@ -205,7 +205,7 @@ class TestBootstrapToolsetAssignment:
     def test_deprecated_toolset(self, registry):
         expected = {
             "save_job", "add_to_blacklist", "remove_from_blacklist",
-            "export_csv", "update_user_profile", "update_interview_status",
+            "export_csv", "update_user_profile",
             "get_skill_content",
         }
         assert _tool_names(registry, "deprecated") == expected

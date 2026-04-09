@@ -94,9 +94,8 @@ class TestRAGSearchStrategyConstant:
         assert "platform_deliver" in RAG_SEARCH_STRATEGY
 
     def test_s13_tracking(self):
-        """S13: 投递追踪 → get_interview_funnel / get_stats"""
+        """S13: 投递追踪 → get_stats"""
         assert "投递追踪" in RAG_SEARCH_STRATEGY
-        assert "get_interview_funnel" in RAG_SEARCH_STRATEGY
         assert "get_stats" in RAG_SEARCH_STRATEGY
 
     # --- mode 值定义 ---
@@ -138,7 +137,7 @@ class TestRoutingRules:
         assert "优先" in RAG_SEARCH_STRATEGY
 
     def test_delivery_tracking_route(self):
-        """投递进度 → get_interview_funnel / get_stats"""
+        """投递进度 → get_stats"""
         assert "投递进度" in RAG_SEARCH_STRATEGY
 
 

@@ -8,8 +8,6 @@ from db.database import Database
 EXPECTED_TABLES = [
     "jobs",
     "applications",
-    "interview_tracking",
-    "interview_stage_log",
     "user_preferences",
     "blacklist",
     "knowledge_docs",
@@ -45,7 +43,7 @@ class TestSchemaInit:
         rows = await db.execute(
             "SELECT count(*) AS cnt FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
         )
-        assert rows[0]["cnt"] == 10
+        assert rows[0]["cnt"] == 8
 
 
 class TestExecute:

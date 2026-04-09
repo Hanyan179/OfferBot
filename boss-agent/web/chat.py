@@ -132,15 +132,14 @@ async def _init_agent(db: Database, api_key: str, base_url: str, model: str) -> 
         _cl_context = cl.context.session
 
         async def _ui_push(notif: TaskNotification) -> None:
-            """当 agent 不在 loop 中时，直接推送通知到 UI"""
+            """后台任务完成 → 推送任务面板更新"""
             try:
                 from chainlit.context import init_ws_context
                 init_ws_context(_cl_context)
-                await cl.Message(
-                    content=f"📋 {notif.message}\n\n需要我帮你同步数据并分析岗位吗？"
-                ).send()
+                from services.task_state import TaskStateStore
+                await _push_task_panel(TaskStateStore.get())
             except Exception as e:
-                logger.warning("UI 推送失败: %s", e)
+                logger.warning("任务面板推送失败: %s", e)
 
         task_monitor.set_ui_callback(_ui_push)
         cl.user_session.set("task_monitor", task_monitor)
@@ -402,7 +401,7 @@ async def _execute_generic_tool(tool_name: str, params: dict, card_el):
             await card_el.update()
         return
 
-    # 注册任务到面板
+    # 注册任务到面板并推送
     task_id = f"{tool_name}-{int(_time.time())}"
     store = TaskStateStore.get()
     tool = registry.get_tool(tool_name)
@@ -410,18 +409,18 @@ async def _execute_generic_tool(tool_name: str, params: dict, card_el):
         task_id=task_id, name=tool.display_name,
         platform="local", status="running", progress_text="执行中",
     ))
+    await _push_task_panel(store)
 
     try:
         context = {"db": db, "getjob_client": cl.user_session.get("getjob_client"), "job_rag": cl.user_session.get("job_rag")}
         result = await tool.execute(params, context)
-        logger.info("_execute_generic_tool: tool=%s result=%s", tool_name, result)
-        # confirm_required 不应该出现在这里，但防御一下
         if isinstance(result, dict) and result.get("action") == "confirm_required":
+            store.update_status(task_id, "failed", "确认参数丢失")
             if card_el:
                 card_el.props["status"] = "failed"
                 card_el.props["result_message"] = "确认参数丢失，请重试"
                 await card_el.update()
-            store.update_status(task_id, "failed", "确认参数丢失")
+            await _push_task_panel(store)
             return
         success = result.get("success", True) if isinstance(result, dict) else True
         msg = result.get("message", "完成") if isinstance(result, dict) else "完成"
@@ -436,6 +435,15 @@ async def _execute_generic_tool(tool_name: str, params: dict, card_el):
             card_el.props["status"] = "failed"
             card_el.props["result_message"] = str(e)
             await card_el.update()
+    await _push_task_panel(store)
+
+
+async def _push_task_panel(store):
+    """推送任务面板更新到前端"""
+    await cl.send_window_message(json.dumps({
+        "type": "task_panel_update",
+        "tasks": store.get_active(),
+    }, ensure_ascii=False, default=str))
 
 
 async def _execute_start_task(params: dict, card_el):
@@ -720,7 +728,8 @@ async def handle_user_message(content: str):
             card_type = card_data.get("card_type", "unknown")
             element = cl.CustomElement(name="ActionCard", props=card_data, display="inline")
             cl.user_session.set(f"action_card_{card_type}", element)
-            pending_elements.append(element)
+            # 直接发送（不攒到 pending，因为 confirm_required 不会有 assistant_message）
+            await cl.Message(content="请确认以下操作：", elements=[element]).send()
 
         elif event.type == "ui_render":
             for_ui = event.data.get("for_ui", {})
@@ -747,16 +756,9 @@ async def handle_user_message(content: str):
             await cl.Message(content="⚠️ 达到最大工具调用轮数，已停止。").send()
 
         elif event.type == "task_notification":
-            # 后台任务完成通知 — 展示给用户
-            notif_msg = event.data.get("message", "")
-            platform = event.data.get("platform", "")
-            status = event.data.get("status", "")
-            if status == "completed":
-                await cl.Message(content=f"📋 {notif_msg}").send()
-            elif status == "timeout":
-                await cl.Message(content=f"⏰ {notif_msg}").send()
-            else:
-                await cl.Message(content=f"ℹ️ {notif_msg}").send()
+            # 后台任务通知 → 推送任务面板
+            from services.task_state import TaskStateStore
+            await _push_task_panel(TaskStateStore.get())
 
     # agent 处理完毕
     cl.user_session.set("agent_busy", False)

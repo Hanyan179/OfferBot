@@ -183,22 +183,6 @@ async def _load_active_resume(db: Database) -> dict:
     }
 
 
-# ---- 阶段标签映射 ----
-
-STAGE_LABELS: dict[str, str] = {
-    "applied": "已投递", "viewed": "已读", "replied": "已回复",
-    "interview_scheduled": "约面试", "round_1": "一面", "round_2": "二面",
-    "round_3": "三面", "hr_round": "HR面", "offer": "Offer",
-    "rejected": "已拒绝", "withdrawn": "已放弃",
-}
-
-# 终态阶段
-_TERMINAL_STAGES = {"offer", "rejected", "withdrawn"}
-
-# 面试进行中阶段（用于颜色判断）
-_INTERVIEW_ACTIVE = {"interview_scheduled", "round_1", "round_2", "round_3", "hr_round"}
-
-
 def _format_salary(salary_min: int | None, salary_max: int | None) -> str:
     if salary_min and salary_max:
         return f"{salary_min}-{salary_max}K"
@@ -207,41 +191,6 @@ def _format_salary(salary_min: int | None, salary_max: int | None) -> str:
     if salary_max:
         return f"{salary_max}K"
     return "面议"
-
-
-def _stage_color(stage: str) -> str:
-    if stage == "offer":
-        return "green"
-    if stage in _TERMINAL_STAGES:
-        return "red"
-    if stage in _INTERVIEW_ACTIVE:
-        return "green"
-    return "yellow"
-
-
-def _relative_time(ts: str | None) -> str:
-    """将 ISO 时间戳转为相对时间描述。"""
-    if not ts:
-        return ""
-    try:
-        from datetime import datetime, timezone
-        dt = datetime.fromisoformat(ts.replace("Z", "+00:00")) if isinstance(ts, str) else ts
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        now = datetime.now(timezone.utc)
-        delta = now - dt
-        days = delta.days
-        if days == 0:
-            return "今天"
-        if days == 1:
-            return "昨天"
-        if days < 7:
-            return f"{days}天前"
-        if days < 30:
-            return f"{days // 7}周前"
-        return f"{days // 30}月前"
-    except (ValueError, TypeError):
-        return str(ts)[:10] if ts else ""
 
 
 async def _load_jobs(db: Database) -> list[dict]:
@@ -262,116 +211,6 @@ async def _load_jobs(db: Database) -> list[dict]:
         }
         for r in rows
     ]
-
-
-async def _load_interviews(db: Database) -> tuple[list[dict], list[dict]]:
-    """加载面试漏斗数据和面试列表。返回 (funnel, interviews)。"""
-    # 漏斗数据
-    rows = await db.execute("SELECT COUNT(*) AS cnt FROM applications")
-    total = rows[0]["cnt"]
-
-    funnel_stages = [
-        ("投递", "applied"), ("已读", "viewed"), ("回复", "replied"),
-        ("面试", "interview_scheduled"), ("Offer", "offer"),
-    ]
-    funnel = []
-    for label, stage in funnel_stages:
-        if stage == "applied":
-            funnel.append({"name": label, "count": total})
-        else:
-            r = await db.execute(
-                "SELECT COUNT(DISTINCT application_id) AS cnt "
-                "FROM interview_stage_log WHERE to_stage = ?", (stage,)
-            )
-            funnel.append({"name": label, "count": r[0]["cnt"]})
-
-    # 面试列表：每个投递的最新状态
-    interviews_raw = await db.execute(
-        "SELECT a.id AS app_id, j.title, j.company, "
-        "COALESCE(it.stage, 'applied') AS stage, "
-        "COALESCE(it.stage_changed_at, a.created_at) AS updated "
-        "FROM applications a "
-        "JOIN jobs j ON a.job_id = j.id "
-        "LEFT JOIN interview_tracking it ON it.application_id = a.id "
-        "ORDER BY COALESCE(it.stage_changed_at, a.created_at) DESC"
-    )
-    interviews = [
-        {
-            "title": r.get("title") or "未知岗位",
-            "company": r.get("company") or "未知公司",
-            "stage": r["stage"],
-            "stage_label": STAGE_LABELS.get(r["stage"], r["stage"]),
-            "updated": _relative_time(r.get("updated")),
-        }
-        for r in interviews_raw
-    ]
-
-    return funnel, interviews
-
-
-async def _load_overview(db: Database) -> dict:
-    """加载总览/徽章墙数据。"""
-    # 统计数据
-    rows = await db.execute("SELECT COUNT(*) AS cnt FROM applications")
-    total = rows[0]["cnt"]
-
-    # 非终态 = 进行中
-    active_rows = await db.execute(
-        "SELECT COUNT(*) AS cnt FROM applications a "
-        "LEFT JOIN interview_tracking it ON it.application_id = a.id "
-        "WHERE COALESCE(it.stage, 'applied') NOT IN ('offer', 'rejected', 'withdrawn')"
-    )
-    active = active_rows[0]["cnt"]
-
-    # 本周新增投递
-    week_rows = await db.execute(
-        "SELECT COUNT(*) AS cnt FROM applications "
-        "WHERE created_at >= date('now', '-7 days')"
-    )
-    new_this_week = week_rows[0]["cnt"]
-
-    # 面试中（interview_scheduled 及之后的面试阶段）
-    interview_rows = await db.execute(
-        "SELECT COUNT(DISTINCT application_id) AS cnt FROM interview_tracking "
-        "WHERE stage IN ('interview_scheduled','round_1','round_2','round_3','hr_round')"
-    )
-    interviews_count = interview_rows[0]["cnt"]
-
-    # Offer 数
-    offer_rows = await db.execute(
-        "SELECT COUNT(DISTINCT application_id) AS cnt FROM interview_tracking "
-        "WHERE stage = 'offer'"
-    )
-    offers = offer_rows[0]["cnt"]
-
-    stats = {
-        "active": active,
-        "new_this_week": new_this_week,
-        "interviews": interviews_count,
-        "offers": offers,
-    }
-
-    # 徽章墙卡片
-    cards_raw = await db.execute(
-        "SELECT j.title, j.company, j.match_score, "
-        "COALESCE(it.stage, 'applied') AS stage "
-        "FROM applications a "
-        "JOIN jobs j ON a.job_id = j.id "
-        "LEFT JOIN interview_tracking it ON it.application_id = a.id "
-        "ORDER BY COALESCE(it.stage_changed_at, a.created_at) DESC"
-    )
-    cards = [
-        {
-            "title": r.get("title") or "未知岗位",
-            "company": r.get("company") or "未知公司",
-            "score": f"{round(r['match_score'])}%" if r.get("match_score") is not None else "N/A",
-            "stage": STAGE_LABELS.get(r["stage"], r["stage"]),
-            "color": _stage_color(r["stage"]),
-        }
-        for r in cards_raw
-    ]
-
-    return {"stats": stats, "cards": cards}
 
 
 # ---- 单页面入口 ----
@@ -414,26 +253,6 @@ async def page_resume(request: Request):
     return templates.TemplateResponse(request, "embed_wrap.html", {
         "title": "简历管理", "content_template": "resume_content.html",
         "resume": resume, "suggestions": [],
-    })
-
-
-@app.get("/page/interviews", response_class=HTMLResponse)
-async def page_interviews(request: Request):
-    db = await _get_db()
-    funnel, interviews = await _load_interviews(db)
-    return templates.TemplateResponse(request, "embed_wrap.html", {
-        "title": "面试追踪", "content_template": "interviews_content.html",
-        "funnel": funnel, "interviews": interviews,
-    })
-
-
-@app.get("/page/overview", response_class=HTMLResponse)
-async def page_overview(request: Request):
-    db = await _get_db()
-    overview = await _load_overview(db)
-    return templates.TemplateResponse(request, "embed_wrap.html", {
-        "title": "求职总览", "content_template": "overview_content.html",
-        **overview,
     })
 
 
@@ -1111,111 +930,6 @@ async def api_fetch_job_detail(job_id: int):
     await client.close()
     return JSONResponse(result)
 
-
-# ---- 知识图谱 API ----
-
-@app.get("/api/graph/user")
-async def api_graph_user():
-    import sqlite3
-    from web.graph_api import build_user_graph
-    conn = sqlite3.connect(load_config().db_path)
-    return build_user_graph(conn)
-
-@app.get("/api/graph/jobs")
-async def api_graph_jobs():
-    from web.graph_api import build_jobs_graph
-    return build_jobs_graph(str(Path(__file__).parent.parent / "data" / "lightrag_jobs"))
-
-@app.get("/api/graph/match")
-async def api_graph_match():
-    """岗位匹配度排行（embedding + 门槛过滤）"""
-    import sqlite3 as _sql, json as _json, re as _re
-    import numpy as _np
-
-    _conn = _sql.connect(load_config().db_path)
-    _conn.row_factory = lambda c,r: {col[0]:r[i] for i,col in enumerate(c.description)}
-
-    _resume = _conn.execute("SELECT * FROM resumes WHERE is_active=1").fetchone()
-    if not _resume or not _resume.get("raw_text"):
-        return {"matches": [], "error": "请先上传简历"}
-
-    _prefs = _conn.execute("SELECT * FROM job_preferences WHERE is_active=1").fetchone()
-    _user_skills = _json.loads(_resume.get("skills_flat") or "[]")
-    _salary_min = (_prefs or {}).get("salary_min") or 0
-
-    # 有 JD 的岗位
-    _jobs = _conn.execute(
-        "SELECT id, title, company, city, salary_min, salary_max, experience, education, url, raw_jd "
-        "FROM jobs WHERE raw_jd IS NOT NULL AND raw_jd != ''"
-    ).fetchall()
-    if not _jobs:
-        return {"matches": [], "user_skills": _user_skills}
-
-    # embedding 匹配（DashScope text-embedding-v3）
-    _api_key = _conn.execute("SELECT value FROM user_preferences WHERE key='llm_api_key'").fetchone()
-    _base_url = _conn.execute("SELECT value FROM user_preferences WHERE key='llm_base_url'").fetchone()
-    if not _api_key:
-        return {"matches": [], "error": "未配置 API Key"}
-
-    from openai import OpenAI as _OAI
-    _embed_client = _OAI(api_key=_api_key["value"], base_url=_base_url["value"] if _base_url else "https://dashscope.aliyuncs.com/compatible-mode/v1")
-
-    _user_text = f"{_resume.get('summary','')}\n技能: {', '.join(_user_skills)}\n{(_resume.get('raw_text') or '')[:2000]}"
-    _texts = [_user_text] + [f"{j['title']}\n{j['company']}\n{j['raw_jd']}" for j in _jobs]
-
-    _resp = _embed_client.embeddings.create(model="text-embedding-v3", input=[t[:8000] for t in _texts], dimensions=1024)
-    _embs = _np.array([e.embedding for e in _resp.data], dtype=_np.float32)
-    _embs /= _np.linalg.norm(_embs, axis=1, keepdims=True)
-    _scores = _embs[1:] @ _embs[0]
-
-    _user_skills_lower = set(s.lower() for s in _user_skills)
-    _matches = []
-    for i, job in enumerate(_jobs):
-        _jd = (job.get("raw_jd") or "").lower()
-        # 门槛
-        _blocked = []
-        if any(kw in _jd for kw in ["硕士", "研究生", "master"]):
-            if _resume.get("education_level") in ["本科", "大专"]:
-                _blocked.append("学历要求硕士")
-        if any(kw in _jd for kw in ["985", "211", "双一流"]):
-            _blocked.append("要求985/211")
-
-        # 薪资过滤
-        _sal_low = ""
-        _job_sal_max = job.get("salary_max") or 0
-        if _salary_min and _job_sal_max and _job_sal_max < _salary_min * 0.8:
-            _sal_low = "薪资偏低"
-
-        # 技能加分
-        _skill_bonus = sum(0.01 for s in _user_skills_lower if s in _jd)
-        _matched_skills = [s for s in _user_skills if s.lower() in _jd]
-        _final = float(_scores[i]) + _skill_bonus
-
-        _sal_text = f"{job.get('salary_min','?')}-{job.get('salary_max','?')}K"
-        _matches.append({
-            "name": job["title"],
-            "company": job.get("company", ""),
-            "salary": _sal_text,
-            "city": job.get("city", ""),
-            "url": job.get("url", ""),
-            "match_rate": round(_final, 3),
-            "base_score": round(float(_scores[i]), 3),
-            "matched_skills": _matched_skills,
-            "blocked": _blocked,
-            "salary_warning": _sal_low,
-        })
-
-    _matches.sort(key=lambda x: x["match_rate"], reverse=True)
-    return {"matches": _matches, "user_skills": _user_skills}
-
-@app.get("/graph")
-async def graph_page():
-    """知识图谱可视化页面"""
-    from fastapi.responses import FileResponse
-    return FileResponse(
-        str(Path(__file__).parent / "static" / "graph.html"),
-        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
-    )
 
 @app.get("/job/{job_id}")
 async def job_detail_page(job_id: int):

@@ -114,10 +114,18 @@ class DeleteJobsTool(Tool):
         if count == 0:
             return {"success": True, "deleted": 0, "message": "没有匹配的数据需要删除"}
 
-        # 已确认 → 执行删除
+        # 已确认 → 执行删除（先删关联数据）
         if confirmed:
-            await db.execute_write(f"DELETE FROM jobs{where}", tuple(values))
-            return {"success": True, "deleted": count, "message": f"已删除 {count} 条岗位数据"}
+            id_rows = await db.execute(f"SELECT id FROM jobs{where}", tuple(values))
+            ids = [r["id"] for r in id_rows]
+            if ids:
+                ph = ",".join("?" * len(ids))
+                await db.execute_write(f"DELETE FROM interview_stage_log WHERE application_id IN (SELECT id FROM applications WHERE job_id IN ({ph}))", tuple(ids))
+                await db.execute_write(f"DELETE FROM interview_tracking WHERE application_id IN (SELECT id FROM applications WHERE job_id IN ({ph}))", tuple(ids))
+                await db.execute_write(f"DELETE FROM applications WHERE job_id IN ({ph})", tuple(ids))
+                await db.execute_write(f"DELETE FROM match_results WHERE job_id IN ({ph})", tuple(ids))
+                await db.execute_write(f"DELETE FROM jobs WHERE id IN ({ph})", tuple(ids))
+            return {"success": True, "deleted": len(ids), "message": f"已删除 {len(ids)} 条岗位数据"}
 
         # 未确认 → 返回确认卡片
         desc_parts = []

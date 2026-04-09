@@ -3,7 +3,7 @@ name: 一键智能求职
 description: 基于用户画像，自动完成环境检查→条件构建→爬取岗位→数据过滤→分批量化匹配→TopN筛选的全流程编排
 when_to_use: 当用户说"一键求职"、"帮我自动找工作"、"全自动搜索匹配"、"autopilot"、"帮我从头到尾跑一遍"时
 memory_categories: [job_sprint_goals, career_planning, key_points]
-allowed-tools: [get_user_profile, get_memory, getjob_service_manage, platform_status, platform_update_config, platform_start_task, platform_stop_task, sync_jobs, platform_stats, query_jobs, fetch_job_detail, rag_query, search_jobs_semantic, get_stats, get_interview_funnel]
+allowed-tools: [get_user_profile, get_memory, getjob_service_manage, platform_status, platform_update_config, platform_start_task, platform_stop_task, sync_jobs, platform_stats, query_jobs, fetch_job_detail, rag_query, search_jobs_semantic, get_stats]
 ---
 
 ## 场景描述
@@ -23,7 +23,7 @@ allowed-tools: [get_user_profile, get_memory, getjob_service_manage, platform_st
 
 ## 涉及工具清单（15 个）
 
-本场景涉及 15 个工具，按用途分为 4 组。`allowed-tools` 已全部列出。
+本场景涉及 14 个工具，按用途分为 4 组。`allowed-tools` 已全部列出。
 
 ### 画像 & 记忆（2 个）
 
@@ -53,12 +53,11 @@ allowed-tools: [get_user_profile, get_memory, getjob_service_manage, platform_st
 | `rag_query` | 知识图谱+向量混合检索 | `query`, `mode`: "answer"/"search" | Step 6 |
 | `search_jobs_semantic` | 纯向量语义搜索岗位 | `query`, `top_k` | Step 6 |
 
-### 统计 & 追踪（2 个）
+### 统计（1 个）
 
 | 工具名 | 用途 | 关键参数 | 使用步骤 |
 |--------|------|---------|---------|
-| `get_stats` | 获取投递/面试统计 | 无参数 | Step 7 后续 |
-| `get_interview_funnel` | 获取面试漏斗数据 | 无参数 | Step 7 后续 |
+| `get_stats` | 获取投递统计 | 无参数 | Step 7 后续 |
 
 ---
 

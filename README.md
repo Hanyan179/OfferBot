@@ -62,7 +62,7 @@ MooBot 执行：
 - **多 LLM 支持** — OpenAI 兼容格式，支持阿里云 DashScope / OpenAI / Google Gemini / DeepSeek
 - **RAG 知识库** — LightRAG 知识图谱 + 向量检索，hybrid 模式融合
 - **浏览器自动化** — Playwright 驱动，支持猎聘等平台
-- **Web UI** — Chainlit 对话 + 岗位管理 + 图谱可视化 + 面试追踪
+- **Web UI** — Chainlit 对话 + 岗位管理 + 简历管理 + 一键求职
 - **Tool 可扩展** — 继承基类，注册即用（[开发指南](docs/tool-development.md)）
 
 ## 架构
@@ -81,7 +81,7 @@ MooBot 执行：
 ```
 ┌─────────────────────────────────────────────┐
 │              Web UI (Chainlit + FastAPI)     │
-│  对话 │ 岗位管理 │ 图谱 │ 面试追踪 │ 设置   │
+│  对话 │ 岗位管理 │ 简历 │ 一键求职 │ 设置   │
 └──────────────────┬──────────────────────────┘
                    │
 ┌──────────────────▼──────────────────────────┐
@@ -185,8 +185,6 @@ export DASHSCOPE_LLM_MODEL="gemini-2.0-flash"
 | `save_job` | 保存岗位数据 |
 | `save_application` | 记录投递 |
 | `get_stats` | 投递统计 |
-| `get_interview_funnel` | 面试漏斗 |
-| `update_interview_status` | 更新面试状态 |
 | `add_to_blacklist` / `remove_from_blacklist` | 黑名单管理 |
 | `export_csv` | 导出 CSV |
 

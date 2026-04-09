@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import React, { useState, useMemo } from 'react'
-import { Play, X, Loader2 } from 'lucide-react'
+import { Play, X } from 'lucide-react'
 
 /**
  * ActionCard — AI 生成的操作卡片。
@@ -201,22 +201,6 @@ export default function ActionCard() {
           </Button>
         </CardFooter>
       )}
-
-      {isExecuting && (
-        <CardFooter className="pt-0">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" /> 执行中，可在任务面板查看进度...
-          </div>
-        </CardFooter>
-      )}
-
-      {/* 开源致谢 + 数据来源 */}
-      <div className="px-6 pb-3">
-        <Separator className="mb-2" />
-        <p className="text-[11px] text-muted-foreground">
-          数据采集由开源项目 <a href="https://github.com/loks666/get_jobs" target="_blank" rel="noopener" className="underline">get_jobs</a> 提供支持 · 数据来源：猎聘
-        </p>
-      </div>
     </Card>
   )
 }
