@@ -50,7 +50,7 @@ class GetDataStatusTool(Tool):
             job_count = rows[0]["cnt"]
 
             rows = await db.execute(
-                "SELECT COUNT(*) AS cnt FROM jobs WHERE jd IS NOT NULL AND jd != ''"
+                "SELECT COUNT(*) AS cnt FROM jobs WHERE raw_jd IS NOT NULL AND raw_jd != ''"
             )
             jd_count = rows[0]["cnt"]
 

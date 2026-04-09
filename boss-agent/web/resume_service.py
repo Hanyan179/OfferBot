@@ -10,11 +10,10 @@ from __future__ import annotations
 
 import io
 import json
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 from docx import Document
-from docx.shared import Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 from db.database import Database
@@ -23,7 +22,7 @@ SCALAR_FIELDS = {
     "name", "phone", "email", "birth_year", "city",
     "education_level", "school", "education_major",
     "years_of_experience", "current_company", "current_role",
-    "summary", "self_evaluation",
+    "summary", "self_evaluation", "raw_text",
 }
 
 LIST_FIELDS = {

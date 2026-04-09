@@ -9,50 +9,50 @@
 
 from __future__ import annotations
 
+# AI Tools
+from agent.skill_loader import SkillLoader
 from agent.tool_registry import ToolRegistry
 from db.database import Database
+from tools.ai.get_skill_content import GetSkillContentTool
 
-# Data Tools
-from tools.data.job_store import SaveJobTool
-from tools.data.application_store import SaveApplicationTool
-from tools.data.stats import GetStatsTool
-from tools.data.blacklist import AddToBlacklistTool, RemoveFromBlacklistTool
-from tools.data.export import ExportCSVTool
-from tools.data.user_profile import GetUserProfileTool, UpdateUserProfileTool
-
-# Query Tools
-from tools.data.query_jobs import QueryJobsTool
-from tools.data.job_manage import DeleteJobsTool, JobCountTool
-from tools.data.search_jobs import SearchJobsTool
-
-# Memory Tools
-from tools.data.memory_tools import (
-    SaveMemoryTool,
-    GetMemoryTool,
-    SearchMemoryTool,
-    UpdateMemoryTool,
-    DeleteMemoryTool,
-    ListMemoryCategoryTool,
-    GetUserCognitiveModelTool,
-)
+# Meta Tools (toolset routing)
+from tools.meta.activate_toolset import ActivateToolsetTool
+from tools.meta.get_data_status import GetDataStatusTool
 
 # Browser Tools (Web)
 from tools.browser.web_fetch import WebFetchTool
 from tools.browser.web_search import WebSearchTool
+from tools.data.application_store import SaveApplicationTool
+from tools.data.export import ExportCSVTool
+from tools.data.job_manage import DeleteJobsTool, JobCountTool
+
+# Data Tools
+from tools.data.job_store import SaveJobTool
+
+# Memory Tools
+from tools.data.memory_tools import (
+    DeleteMemoryTool,
+    GetMemoryTool,
+    GetUserCognitiveModelTool,
+    SaveMemoryTool,
+    SearchMemoryTool,
+    UpdateMemoryTool,
+)
+
+# Query Tools
+from tools.data.query_jobs import QueryJobsTool
+from tools.data.stats import GetStatsTool
+from tools.data.user_profile import GetUserProfileTool, UpdateUserProfileTool
+from tools.getjob.fetch_detail import FetchJobDetailTool
+from tools.getjob.platform_config import PlatformGetConfigTool, PlatformUpdateConfigTool
+from tools.getjob.platform_control import PlatformStartTaskTool, PlatformStopTaskTool
+from tools.getjob.platform_deliver import PlatformDeliverTool
+from tools.getjob.platform_stats import PlatformStatsTool
 
 # Getjob Tools
 from tools.getjob.platform_status import PlatformStatusTool
-from tools.getjob.platform_control import PlatformStartTaskTool, PlatformStopTaskTool
-from tools.getjob.platform_config import PlatformGetConfigTool, PlatformUpdateConfigTool
 from tools.getjob.platform_sync import SyncJobsTool
-from tools.getjob.platform_stats import PlatformStatsTool
 from tools.getjob.service_manager import GetjobServiceManagerTool
-from tools.getjob.fetch_detail import FetchJobDetailTool
-from tools.getjob.platform_deliver import PlatformDeliverTool
-
-# AI Tools
-from agent.skill_loader import SkillLoader
-from tools.ai.get_skill_content import GetSkillContentTool
 
 
 def create_tool_registry() -> tuple[ToolRegistry, SkillLoader]:
@@ -67,15 +67,12 @@ def create_tool_registry() -> tuple[ToolRegistry, SkillLoader]:
     registry.register(SaveJobTool())
     registry.register(SaveApplicationTool())
     registry.register(GetStatsTool())
-    registry.register(AddToBlacklistTool())
-    registry.register(RemoveFromBlacklistTool())
     registry.register(ExportCSVTool())
     registry.register(GetUserProfileTool())
     registry.register(UpdateUserProfileTool())
     registry.register(QueryJobsTool())
     registry.register(DeleteJobsTool())
     registry.register(JobCountTool())
-    registry.register(SearchJobsTool())
 
     # --- Memory Tools ---
     registry.register(SaveMemoryTool())
@@ -83,7 +80,6 @@ def create_tool_registry() -> tuple[ToolRegistry, SkillLoader]:
     registry.register(SearchMemoryTool())
     registry.register(UpdateMemoryTool())
     registry.register(DeleteMemoryTool())
-    registry.register(ListMemoryCategoryTool())
     registry.register(GetUserCognitiveModelTool())
 
     # --- Browser Tools (Web) ---
@@ -106,6 +102,10 @@ def create_tool_registry() -> tuple[ToolRegistry, SkillLoader]:
     skill_loader = SkillLoader(registry=registry)
     registry.register(GetSkillContentTool(skill_loader))
 
+    # --- Meta Tools (toolset routing) ---
+    registry.register(ActivateToolsetTool())
+    registry.register(GetDataStatusTool())
+
     return registry, skill_loader
 
 
@@ -116,9 +116,9 @@ def bootstrap(db: Database, api_key: str, model: str = "qwen-plus", base_url: st
     Returns:
         dict with keys: registry, planner, executor, getjob_client
     """
+    from agent.executor import Executor
     from agent.llm_client import LLMClient
     from agent.planner import Planner
-    from agent.executor import Executor
     from services.getjob_client import GetjobClient
 
     registry, skill_loader = create_tool_registry()

@@ -14,6 +14,7 @@
     <h2 class="category-title" style="margin-bottom:0;padding-bottom:0;border-bottom:none;">📄 简历信息</h2>
     <div class="resume-toolbar">
       <button class="btn btn-secondary btn-sm view-only" onclick="resumeEditor.enterEdit()" title="编辑简历">✏️ 编辑</button>
+      <button class="btn btn-secondary btn-sm view-only" onclick="resumeEditor.showUpload()" title="上传简历文件">📤 上传简历</button>
       <button class="btn btn-secondary btn-sm view-only" onclick="resumeEditor.downloadDocx()" title="下载 DOCX">📥 下载 DOCX</button>
       <button class="btn btn-primary btn-sm edit-only" onclick="resumeEditor.save()" id="btn-save" title="保存">💾 保存</button>
       <button class="btn btn-secondary btn-sm edit-only" onclick="resumeEditor.cancel()" title="取消">✖ 取消</button>
@@ -22,6 +23,21 @@
 
   <!-- 错误提示 -->
   <div id="resume-error" style="display:none;background:#fee2e2;color:#991b1b;padding:10px 14px;border-radius:10px;font-size:13px;margin-bottom:12px;"></div>
+
+  <!-- 上传简历弹窗 -->
+  <div id="upload-modal" style="display:none;background:rgba(0,0,0,.4);position:fixed;inset:0;z-index:999;display:none;align-items:center;justify-content:center;">
+    <div style="background:#fff;border-radius:16px;padding:24px;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.15);">
+      <h3 style="font-size:16px;font-weight:600;margin:0 0 12px;">📤 上传简历</h3>
+      <p style="font-size:13px;color:#6e6e73;margin:0 0 16px;">支持 PDF、DOCX、MD、TXT 格式，系统会自动解析并填充字段。</p>
+      <input type="file" id="resume-file-input" accept=".pdf,.docx,.doc,.md,.txt" style="margin-bottom:16px;font-size:13px;">
+      <div id="upload-progress" style="display:none;font-size:13px;color:#007aff;margin-bottom:12px;">⏳ 正在解析...</div>
+      <div id="upload-error" style="display:none;background:#fee2e2;color:#991b1b;padding:8px 12px;border-radius:8px;font-size:13px;margin-bottom:12px;"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-secondary btn-sm" onclick="resumeEditor.hideUpload()">取消</button>
+        <button class="btn btn-primary btn-sm" id="btn-upload" onclick="resumeEditor.doUpload()">上传并解析</button>
+      </div>
+    </div>
+  </div>
 
   <!-- ===== 基本信息 ===== -->
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:14px;margin-bottom:16px;">
@@ -396,6 +412,10 @@ html.dark .tag-input { color: #e5e5e5; }
 /* 列表编辑卡片 */
 .list-edit-card { background: #f9fafb; border: 1px solid rgba(0,0,0,.06); border-radius: 10px; padding: 12px; margin-bottom: 10px; }
 html.dark .list-edit-card { background: #333; border-color: rgba(255,255,255,.06); }
+/* 上传弹窗暗色 */
+html.dark #upload-modal > div { background: #2c2c2e; }
+html.dark #upload-modal h3 { color: #f5f5f7; }
+html.dark #upload-modal p { color: #8e8e93; }
 .editable-list-item { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
 .editable-list-item input { flex: 1; }
 .sub-highlights { margin-top: 8px; }
@@ -457,6 +477,52 @@ const resumeEditor = {
 
   downloadDocx() {
     window.location.href = '/api/resume/export/docx';
+  },
+
+  /* ---- 上传简历 ---- */
+  showUpload() {
+    const modal = document.getElementById('upload-modal');
+    modal.style.display = 'flex';
+    document.getElementById('resume-file-input').value = '';
+    document.getElementById('upload-progress').style.display = 'none';
+    document.getElementById('upload-error').style.display = 'none';
+  },
+
+  hideUpload() {
+    document.getElementById('upload-modal').style.display = 'none';
+  },
+
+  async doUpload() {
+    const fileInput = document.getElementById('resume-file-input');
+    const file = fileInput.files[0];
+    if (!file) { alert('请选择文件'); return; }
+
+    const btn = document.getElementById('btn-upload');
+    const progress = document.getElementById('upload-progress');
+    const errEl = document.getElementById('upload-error');
+    btn.disabled = true;
+    progress.style.display = 'block';
+    errEl.style.display = 'none';
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const resp = await fetch('/api/resume/upload', { method: 'POST', body: formData });
+      const result = await resp.json();
+      if (result.ok) {
+        this.hideUpload();
+        location.reload();
+      } else {
+        errEl.textContent = result.error || '上传失败';
+        errEl.style.display = 'block';
+      }
+    } catch (e) {
+      errEl.textContent = '网络错误，请重试';
+      errEl.style.display = 'block';
+    } finally {
+      btn.disabled = false;
+      progress.style.display = 'none';
+    }
   },
 
   /* ---- 标签输入 ---- */

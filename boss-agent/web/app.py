@@ -10,16 +10,15 @@ Boss Agent — FastAPI 主应用（单页面架构）
 
 from __future__ import annotations
 
-import os
 import re
 import sys
 from datetime import datetime
 from pathlib import Path
 
+from chainlit.utils import mount_chainlit
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
-from chainlit.utils import mount_chainlit
 
 _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
@@ -487,9 +486,10 @@ async def api_test_chat(request: Request):
     if not api_key or not base_url or not model:
         return JSONResponse({"ok": False, "error": "未配置 LLM，请先在设置中配置"}, status_code=400)
 
+    from openai import AsyncOpenAI
+
     from agent.bootstrap import create_tool_registry
     from agent.system_prompt import build_full_system_prompt
-    from openai import AsyncOpenAI
 
     registry, _skill_loader = create_tool_registry()
     client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=120)
@@ -726,7 +726,7 @@ async def api_resume():
     r = rows[0]
     pref_rows = await db.execute("SELECT * FROM job_preferences WHERE is_active = 1 LIMIT 1")
     p = pref_rows[0] if pref_rows else {}
-    def _j(v): 
+    def _j(v):
         try: return _json.loads(v) if v else []
         except: return []
     return JSONResponse({"resume": {
@@ -739,6 +739,177 @@ async def api_resume():
         "target_roles": _j(p.get("target_roles")), "salary_min": p.get("salary_min"),
         "salary_max": p.get("salary_max"), "target_cities": _j(p.get("target_cities")),
     }})
+
+
+@app.put("/api/resume")
+async def api_update_resume(request: Request):
+    """更新简历数据（前端编辑保存）"""
+    from web.resume_service import ResumeService
+
+    db = await _get_db()
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "请求格式错误"}, status_code=400)
+
+    svc = ResumeService(db)
+    result = await svc.update_resume(body)
+    return JSONResponse({"ok": True, "fields": result["fields"]})
+
+
+@app.post("/api/resume/upload")
+async def api_resume_upload(request: Request):
+    """上传简历文件（PDF/DOCX），解析文本后自动填充字段。
+
+    不需要 LLM：使用正则 + 关键词提取结构化字段。
+    """
+    import json as _json
+    import tempfile
+
+    form = await request.form()
+    file = form.get("file")
+    if file is None:
+        return JSONResponse({"ok": False, "error": "未选择文件"}, status_code=400)
+
+    filename = getattr(file, "filename", "") or ""
+    ext = Path(filename).suffix.lower()
+    if ext not in (".pdf", ".docx", ".doc", ".md", ".txt"):
+        return JSONResponse({"ok": False, "error": "仅支持 PDF / DOCX / MD / TXT 格式"}, status_code=400)
+
+    # 保存临时文件并解析
+    content_bytes = await file.read()
+    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+        tmp.write(content_bytes)
+        tmp_path = tmp.name
+
+    try:
+        raw_text = _parse_resume_file(tmp_path, ext)
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
+    if not raw_text:
+        return JSONResponse({"ok": False, "error": "文件解析失败，内容为空"}, status_code=400)
+
+    # 结构化提取（纯规则，不需要 LLM）
+    extracted = _extract_resume_fields(raw_text)
+
+    # 写入数据库
+    from web.resume_service import ResumeService
+
+    db = await _get_db()
+    svc = ResumeService(db)
+    # 同时保存 raw_text
+    extracted["raw_text"] = raw_text
+    result = await svc.update_resume(extracted)
+
+    return JSONResponse({"ok": True, "fields": result["fields"], "extracted": extracted})
+
+
+def _parse_resume_file(file_path: str, ext: str) -> str | None:
+    """解析简历文件为纯文本。"""
+    try:
+        if ext in (".md", ".txt"):
+            return Path(file_path).read_text(encoding="utf-8")
+        if ext == ".pdf":
+            import pdfplumber
+
+            texts = []
+            with pdfplumber.open(file_path) as pdf:
+                for page in pdf.pages:
+                    text = page.extract_text()
+                    if text:
+                        texts.append(text)
+            return "\n\n".join(texts) if texts else None
+        if ext in (".docx", ".doc"):
+            from docx import Document as DocxDocument
+
+            doc = DocxDocument(file_path)
+            texts = [p.text for p in doc.paragraphs if p.text.strip()]
+            return "\n\n".join(texts) if texts else None
+    except Exception:
+        return None
+    return None
+
+
+def _extract_resume_fields(text: str) -> dict:
+    """从简历纯文本中用规则提取结构化字段（不依赖 LLM）。"""
+    data: dict = {}
+
+    lines = text.strip().splitlines()
+    # 姓名：通常是第一行非空短文本
+    for line in lines:
+        line = line.strip()
+        if line and len(line) <= 10 and not re.search(r"[：:@\d{4}]", line):
+            data["name"] = line
+            break
+
+    # 手机
+    m = re.search(r"1[3-9]\d{9}", text)
+    if m:
+        data["phone"] = m.group()
+
+    # 邮箱
+    m = re.search(r"[\w.+-]+@[\w-]+\.[\w.]+", text)
+    if m:
+        data["email"] = m.group()
+
+    # 城市 — 常见关键词后
+    m = re.search(r"(?:现居|城市|所在地|居住地)[：:\s]*(\S{2,6})", text)
+    if m:
+        data["city"] = m.group(1)
+
+    # 学历
+    for kw in ("博士", "硕士", "本科", "大专"):
+        if kw in text:
+            data["education_level"] = kw
+            break
+
+    # 学校
+    m = re.search(r"(?:学校|毕业院校|院校)[：:\s]*(.+?)(?:\s|$)", text)
+    if m:
+        data["school"] = m.group(1).strip()
+
+    # 专业
+    m = re.search(r"(?:专业)[：:\s]*(.+?)(?:\s|$)", text)
+    if m:
+        data["education_major"] = m.group(1).strip()
+
+    # 工作年限
+    m = re.search(r"(\d{1,2})\s*年(?:工作|以上)?(?:经验|经历)?", text)
+    if m:
+        data["years_of_experience"] = int(m.group(1))
+
+    # 当前公司 / 职位 — 从工作经历第一段提取
+    m = re.search(r"(?:当前公司|现任公司|公司)[：:\s]*(.+?)(?:\s|$)", text)
+    if m:
+        data["current_company"] = m.group(1).strip()
+
+    m = re.search(r"(?:当前职位|现任职位|职位|岗位)[：:\s]*(.+?)(?:\s|$)", text)
+    if m:
+        data["current_role"] = m.group(1).strip()
+
+    # 个人简介 / 自我评价
+    for label, field in [("个人简介", "summary"), ("自我评价", "self_evaluation"),
+                         ("个人总结", "summary"), ("自我描述", "self_evaluation")]:
+        m = re.search(rf"{label}[：:\s]*\n?([\s\S]*?)(?=\n{{2,}}|\Z)", text)
+        if m and m.group(1).strip():
+            data[field] = m.group(1).strip()[:500]
+
+    # 技术栈 — 提取常见技术关键词
+    tech_keywords = {
+        "Python", "Java", "JavaScript", "TypeScript", "Go", "Rust", "C++", "C#",
+        "React", "Vue", "Angular", "Node.js", "FastAPI", "Django", "Flask", "Spring",
+        "Docker", "Kubernetes", "K8s", "AWS", "GCP", "Azure",
+        "MySQL", "PostgreSQL", "Redis", "MongoDB", "Elasticsearch",
+        "PyTorch", "TensorFlow", "LLM", "RAG", "Agent", "NLP", "BERT", "GPT",
+        "Git", "Linux", "Nginx", "Kafka", "RabbitMQ", "GraphQL", "REST",
+    }
+    found_tech = [kw for kw in tech_keywords if re.search(rf"\b{re.escape(kw)}\b", text, re.IGNORECASE)]
+    if found_tech:
+        data["tech_stack"] = sorted(found_tech)
+
+    return data
+
 
 # ---- 岗位详情 ----
 
@@ -904,15 +1075,20 @@ async def api_save_job_analysis(job_id: int, request: Request):
 
 
 @app.post("/api/jobs/{job_id}/fetch-detail")
-async def api_fetch_job_detail(job_id: int):
-    """获取单个岗位 JD + 自动图谱化"""
-    from tools.getjob.fetch_detail import FetchJobDetailTool
+async def api_fetch_job_detail(job_id: int, request: Request):
+    """获取单个岗位 JD"""
     from services.getjob_client import GetjobClient
+    from tools.getjob.fetch_detail import FetchJobDetailTool
     db = await _get_db()
     tool = FetchJobDetailTool()
     client = GetjobClient(load_config().getjob_base_url)
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
     result = await tool.execute(
-        {"job_id": job_id},
+        {"job_id": job_id, "force": body.get("force", False)},
         {"db": db, "getjob_client": client},
     )
     await client.close()
@@ -960,8 +1136,10 @@ async def api_ai_exposure():
     流程：确定性数据匹配 → 精简数据组装 → LLM 解读 → 持久化
     """
     import json as _json
+
     from openai import AsyncOpenAI
-    from services.exposure_data import match_occupation, get_task_details
+
+    from services.exposure_data import get_task_details, match_occupation
 
     db = await _get_db()
     resume = await _load_active_resume(db)
@@ -1109,11 +1287,12 @@ async def api_autopilot():
 
     全流程：画像检查 → 本地数据检查 → 程序化过滤 → JD覆盖检查 → 量化匹配 → TopN
     """
-    import json as _json
     import asyncio
+    import json as _json
     import re as _re
-    from openai import AsyncOpenAI
+
     from fastapi.responses import StreamingResponse
+    from openai import AsyncOpenAI
 
     db = await _get_db()
 
@@ -1428,8 +1607,9 @@ async def api_autopilot():
 # ---- Chainlit DataLayer (SQLAlchemy + SQLite) ----
 
 import sqlite3 as _sqlite3
-from chainlit.data.sql_alchemy import SQLAlchemyDataLayer
+
 from chainlit.config import config as _cl_config
+from chainlit.data.sql_alchemy import SQLAlchemyDataLayer
 
 _chainlit_db_path = _project_root / "db" / "chainlit.db"
 _chainlit_db_url = f"sqlite+aiosqlite:///{_chainlit_db_path}"
@@ -1446,6 +1626,7 @@ _cl_config.code.data_layer = lambda: SQLAlchemyDataLayer(conninfo=_chainlit_db_u
 
 # Also eagerly initialize to prevent race with lazy init
 import chainlit.data as _cl_data
+
 _cl_data._data_layer = SQLAlchemyDataLayer(conninfo=_chainlit_db_url)
 _cl_data._data_layer_initialized = True
 
