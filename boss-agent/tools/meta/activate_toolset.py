@@ -29,7 +29,7 @@ class ActivateToolsetTool(Tool):
         return (
             "激活场景工具集，使 LLM 可以使用该场景的工具。\n\n"
             "可用工具集：\n"
-            "- crawl: 数据采集（爬取岗位列表、获取 JD 详情、同步数据）\n"
+            "- crawl: 数据采集（采集岗位列表、获取 JD 详情、同步数据）\n"
             "- deliver: 岗位投递（投递岗位、记录投递）\n"
             "- admin: 平台管理（配置、服务管理、统计）\n"
             "- web: 网页工具（抓取网页、搜索引擎）\n\n"

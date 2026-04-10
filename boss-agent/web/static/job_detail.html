@@ -175,7 +175,7 @@ function render() {
   if (d.url) document.getElementById('btnUrl').href = d.url;
   else document.getElementById('btnUrl').style.display = 'none';
 
-  // 没有 JD → 显示爬取按钮，隐藏分析按钮
+  // 没有 JD → 显示采集按钮，隐藏分析按钮
   const btn = document.getElementById('btnAction');
   if (!d.raw_jd) {
     btn.textContent = '📥 获取详情数据并分析';
@@ -200,7 +200,7 @@ function render() {
   const jdEl = document.getElementById('jJD');
   jdEl.innerHTML = d.raw_jd
     ? `<div class="jd-content">${esc(d.raw_jd)}</div>`
-    : `<div class="no-jd">暂无职位描述（需要先爬取 JD）</div>`;
+    : `<div class="no-jd">暂无职位描述（待获取）</div>`;
 
   // 已有分析结果 → 直接渲染
   if (d.match_detail) {

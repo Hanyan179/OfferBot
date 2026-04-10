@@ -49,7 +49,7 @@ class PlatformStartTaskTool(Tool):
     @property
     def description(self) -> str:
         return (
-            "启动猎聘平台岗位爬取。不直接执行，而是生成操作卡片供用户确认参数后执行。"
+            "启动猎聘平台岗位采集。不直接执行，而是生成操作卡片供用户确认参数后执行。"
             "AI 根据用户需求填写搜索参数（关键词、城市、薪资等），用户在 UI 上确认或修改后点击执行。"
         )
 
@@ -109,8 +109,8 @@ class PlatformStartTaskTool(Tool):
         return {
             "action": "confirm_required",
             "card_type": "start_task",
-            "title": "🚀 启动岗位爬取",
-            "description": "将在猎聘平台搜索以下条件的岗位（仅爬取，不投递）",
+            "title": "🚀 启动岗位采集",
+            "description": "将在猎聘平台搜索以下条件的岗位（仅采集，不投递）",
             "fields": [
                 {"id": "keywords", "label": "搜索关键词", "type": "text", "value": params.get("keywords", ""), "required": True},
                 {"id": "city", "label": "城市", "type": "select", "options": city_options, "value": params.get("city", "上海")},

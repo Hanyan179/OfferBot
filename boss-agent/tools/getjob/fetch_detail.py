@@ -112,7 +112,7 @@ class FetchJobDetailTool(Tool):
         task_id = f"fetch-detail-{int(_time.time())}"
         store = TaskStateStore(db)
         await store.upsert(TaskInfo(
-            task_id=task_id, name=f"爬取岗位详情（{len(rows)}条）",
+            task_id=task_id, name=f"采集岗位详情（{len(rows)}条）",
             platform="liepin", status="running",
             progress_text=f"0/{len(rows)}",
         ))
@@ -182,7 +182,7 @@ class FetchJobDetailTool(Tool):
             done = success_count + fail_count + skipped_count
             await store.update_progress(task_id, f"{done}/{len(rows)} 成功{success_count} 失败{fail_count}")
 
-        # 标记爬取任务完成
+        # 标记采集任务完成
         await store.update_status(task_id, "completed" if success_count > 0 or skipped_count > 0 else "failed",
                             f"完成 成功{success_count} 跳过{skipped_count} 失败{fail_count}")
 

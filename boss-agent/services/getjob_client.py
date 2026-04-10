@@ -141,6 +141,14 @@ class GetjobClient:
         return await self._request("POST", f"/api/{platform}/batch-detail", params={"limit": limit},
                                    timeout=httpx.Timeout(connect=5.0, read=120.0, write=10.0, pool=5.0))
 
+    async def deliver(self, platform: str, job_ids: list[int], messages: dict[int, str] | None = None) -> dict:
+        """投递打招呼，可附带自定义消息。"""
+        body: dict[str, Any] = {"jobIds": job_ids}
+        if messages:
+            body["messages"] = {str(k): v for k, v in messages.items()}
+        return await self._request("POST", f"/api/{platform}/deliver", json=body,
+                                   timeout=httpx.Timeout(connect=5.0, read=120.0, write=10.0, pool=5.0))
+
     async def get_stats(self, platform: str, **filters: Any) -> dict:
         params = self._build_filter_params(**filters)
         return await self._request("GET", f"/api/{platform}/stats", params=params)

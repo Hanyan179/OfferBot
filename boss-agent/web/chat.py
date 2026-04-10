@@ -475,7 +475,7 @@ async def _post_sync_filter(db, config_data: dict, sync_result: dict) -> int:
 
 
 async def _execute_start_task(params: dict, card_el):
-    """执行爬取：update_config → start_task → 后台轮询 → 推送任务面板"""
+    """执行采集：update_config → start_task → 后台轮询 → 推送任务面板"""
     import json as _json
     import time as _time
     getjob_client = cl.user_session.get("getjob_client")
@@ -503,7 +503,7 @@ async def _execute_start_task(params: dict, card_el):
 
     if card_el:
         card_el.props["status"] = "completed"
-        card_el.props["result_message"] = "爬取任务已启动！进度请看右侧面板 →"
+        card_el.props["result_message"] = "采集任务已启动！进度请看右侧面板 →"
         await card_el.update()
 
     task_monitor = cl.user_session.get("task_monitor")
@@ -516,7 +516,7 @@ async def _execute_start_task(params: dict, card_el):
         store = TaskStateStore(db) if db else None
         if store:
             await store.upsert(TaskInfo(
-                task_id=task_id, name="爬取岗位列表",
+                task_id=task_id, name="采集岗位列表",
                 platform=platform, status="running", progress_text="启动中...",
             ))
             await _push_task_panel(store)
@@ -549,7 +549,7 @@ async def _execute_start_task(params: dict, card_el):
                 return {}
             sync_result = await SyncJobsTool().execute({"platform": p}, {"db": db, "getjob_client": getjob_client})
 
-            # 同步后过滤：根据用户爬取参数删除不匹配的数据
+            # 同步后过滤：根据用户采集参数删除不匹配的数据
             filtered = await _post_sync_filter(db, config_data, sync_result)
             if filtered:
                 sync_result.setdefault("data", {})["filtered"] = filtered

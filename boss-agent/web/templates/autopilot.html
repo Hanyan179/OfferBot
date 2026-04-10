@@ -101,7 +101,7 @@
 {% block content %}
 <div class="autopilot-hero">
   <h1>🚀 一键智能求职</h1>
-  <p>基于你的简历画像，自动搜索、爬取、匹配，找到最适合你的岗位</p>
+  <p>基于你的简历画像，自动搜索、采集、匹配，找到最适合你的岗位</p>
 </div>
 
 <!-- 预检面板 -->
@@ -118,7 +118,7 @@
   <div class="check-item" id="ck-service">
     <div class="check-icon">🖥️</div>
     <div class="check-info">
-      <div class="check-title">getjob 爬取服务</div>
+      <div class="check-title">getjob 采集服务</div>
       <div class="check-desc" id="ck-service-desc">检查中...</div>
     </div>
     <span class="check-status status-checking" id="ck-service-status">检查中</span>
@@ -281,11 +281,11 @@ async function checkJobs() {
     if (total > 0) {
       el.textContent = `${total} 条`;
       el.className = 'check-status status-ok';
-      desc.textContent = `本地已有 ${total} 条岗位数据，可直接匹配或增量爬取`;
+      desc.textContent = `本地已有 ${total} 条岗位数据，可直接匹配或增量采集`;
     } else {
       el.textContent = '暂无数据';
       el.className = 'check-status status-warn';
-      desc.textContent = '将在流程中自动爬取';
+      desc.textContent = '将在流程中自动采集';
     }
   } catch(e) {
     setCheckError('ck-jobs', '检查失败');

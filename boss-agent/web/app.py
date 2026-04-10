@@ -624,7 +624,7 @@ async def api_get_tasks():
 
 @app.post("/api/tasks/{platform}/stop")
 async def api_stop_task(platform: str):
-    """停止指定平台的爬取任务"""
+    """停止指定平台的采集任务"""
     from services.getjob_client import GetjobClient
     client = GetjobClient(load_config().getjob_base_url)
     result = await client.stop_task(platform)
@@ -1404,7 +1404,7 @@ async def api_autopilot():
         if local_count == 0:
             total_rows = await db.execute("SELECT COUNT(*) as cnt FROM jobs")
             total = total_rows[0]["cnt"] if total_rows else 0
-            yield _evt(3, "done", f"⚠️ 匹配 0 条（总 {total} 条），建议在对话中触发爬取后再来")
+            yield _evt(3, "done", f"⚠️ 匹配 0 条（总 {total} 条），建议在对话中触发采集后再来")
             return
         yield _evt(3, "done", f"✅ 本地 {local_count} 条匹配岗位")
 
