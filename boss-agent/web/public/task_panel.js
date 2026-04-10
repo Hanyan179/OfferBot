@@ -202,6 +202,15 @@
     `;
     document.body.appendChild(panelEl);
     panelEl.querySelector('.tp-close').addEventListener('click', closePanel);
+
+    // 页面加载时从 API 拉取持久化的任务状态
+    fetch('/api/tasks').then(r => r.json()).then(d => {
+      tasks = d.tasks || [];
+      renderTasks();
+      const n = tasks.filter(t => t.status === 'running').length;
+      toggleBtn.innerHTML = n > 0 ? `📋<span class="badge">${n}</span>` : '📋';
+      if (n > 0) openPanel();
+    }).catch(() => {});
   }
 
   function togglePanel() { panelOpen ? closePanel() : openPanel(); }
@@ -304,4 +313,18 @@
   } else {
     createPanel();
   }
+
+  // ---- 隐藏右下角浮动通知小卡片 ----
+  function killFloatingCard(root) {
+    (root || document).querySelectorAll('.fixed.bottom-4.right-4.z-50.w-72').forEach(el => {
+      el.style.display = 'none';
+    });
+  }
+  const obs = new MutationObserver(() => {
+    killFloatingCard();
+    // 也检查 shadow DOM
+    const sr = document.querySelector('[id$="shadowroot"]');
+    if (sr && sr.shadowRoot) killFloatingCard(sr.shadowRoot);
+  });
+  obs.observe(document.body, { childList: true, subtree: true });
 })();

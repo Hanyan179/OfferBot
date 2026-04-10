@@ -108,7 +108,6 @@ async def _init_agent(db: Database, api_key: str, base_url: str, model: str) -> 
         components = bootstrap(db=db, api_key=api_key, model=model, base_url=base_url)
         cl.user_session.set("planner", components["planner"])
         cl.user_session.set("executor", components["executor"])
-        cl.user_session.set("getjob_client", components["getjob_client"])
         cl.user_session.set("skill_loader", components["skill_loader"])
         cl.user_session.set("registry", components["registry"])
 
@@ -387,7 +386,7 @@ async def _execute_generic_tool(tool_name: str, params: dict, card_el):
     await _push_task_panel(store)
 
     try:
-        context = {"db": db, "getjob_client": cl.user_session.get("getjob_client")}
+        context = {"db": db, "browser": cl.user_session.get("browser")}
         result = await tool.execute(params, context)
         if isinstance(result, dict) and result.get("action") == "confirm_required":
             await store.update_status(task_id, "failed", "确认参数丢失")
@@ -420,6 +419,34 @@ async def _push_task_panel(store):
         "type": "task_panel_update",
         "tasks": tasks,
     }, ensure_ascii=False, default=str))
+
+
+async def _refresh_job_list_element(db):
+    """从数据库重新查询状态，刷新对话中最近的 JobList 卡片。"""
+    job_list_el = cl.user_session.get("last_job_list_element")
+    if not job_list_el or not hasattr(job_list_el, "props") or not job_list_el.props.get("jobs"):
+        return
+    ids = [j["id"] for j in job_list_el.props["jobs"]]
+    if not ids:
+        return
+    placeholders = ",".join("?" * len(ids))
+    rows = await db.execute(
+        f"SELECT id,"
+        f" CASE WHEN raw_jd IS NOT NULL AND raw_jd != '' THEN 1 ELSE 0 END as has_jd,"
+        f" CASE WHEN match_detail IS NOT NULL AND match_detail != '' THEN 1 ELSE 0 END as has_analysis"
+        f" FROM jobs WHERE id IN ({placeholders})",
+        tuple(ids),
+    )
+    status_map = {r["id"]: r for r in rows}
+    for j in job_list_el.props["jobs"]:
+        s = status_map.get(j["id"])
+        if s:
+            j["has_jd"] = bool(s["has_jd"])
+            j["has_analysis"] = bool(s["has_analysis"])
+    try:
+        await job_list_el.update()
+    except Exception:
+        pass
 
 
 # salaryCode → 月薪下限(K)
@@ -475,108 +502,105 @@ async def _post_sync_filter(db, config_data: dict, sync_result: dict) -> int:
 
 
 async def _execute_start_task(params: dict, card_el):
-    """执行采集：update_config → start_task → 后台轮询 → 推送任务面板"""
-    import json as _json
+    """执行采集：直接用 Playwright 搜索猎聘，结果写入本地 DB"""
     import time as _time
-    getjob_client = cl.user_session.get("getjob_client")
-    if not getjob_client:
+
+    browser = cl.user_session.get("browser")
+    if not browser:
         if card_el:
             card_el.props["status"] = "failed"
-            card_el.props["result_message"] = "getjob 服务未配置"
+            card_el.props["result_message"] = "浏览器未初始化"
             await card_el.update()
         return
 
+    db = cl.user_session.get("db")
     platform = "liepin"
-    config_data = {k: params[k] for k in ("keywords", "city", "salaryCode", "workYearCode", "eduLevel", "maxPages", "maxItems") if k in params and params[k] not in (None, "")}
-    config_data["scrapeOnly"] = True
-
-    if config_data:
-        await getjob_client.update_config(platform, config_data)
-
-    result = await getjob_client.start_task(platform)
-    if not result.get("success"):
-        if card_el:
-            card_el.props["status"] = "failed"
-            card_el.props["result_message"] = result.get("error", "启动失败")
-            await card_el.update()
-        return
 
     if card_el:
         card_el.props["status"] = "completed"
         card_el.props["result_message"] = "采集任务已启动！进度请看右侧面板 →"
         await card_el.update()
 
-    task_monitor = cl.user_session.get("task_monitor")
-    if task_monitor:
-        task_id = f"{platform}-{int(_time.time())}"
-        db = cl.user_session.get("db")
+    # 注册任务到面板
+    from services.task_state import TaskStateStore, TaskInfo
+    task_id = f"{platform}-{int(_time.time())}"
+    store = TaskStateStore(db) if db else None
+    if store:
+        await store.upsert(TaskInfo(
+            task_id=task_id, name="采集岗位列表",
+            platform=platform, status="running", progress_text="启动中...",
+        ))
+        await _push_task_panel(store)
 
-        # 写入 TaskStateStore，让 /api/tasks 能查到
-        from services.task_state import TaskStateStore, TaskInfo
-        store = TaskStateStore(db) if db else None
-        if store:
-            await store.upsert(TaskInfo(
-                task_id=task_id, name="采集岗位列表",
-                platform=platform, status="running", progress_text="启动中...",
-            ))
-            await _push_task_panel(store)
+    # 在后台执行搜索
+    import asyncio
 
-        async def _progress(p: str, polls: int, is_running: bool, error_msg: str | None = None) -> None:
-            """轮询时更新进度：查 getjob stats 获取实际数量"""
-            if not store:
+    async def _run_scrape():
+        try:
+            keyword = params.get("keywords", "")
+            if isinstance(keyword, list):
+                keyword = ",".join(keyword)
+
+            from tools.crawler.scrape_jobs import ScrapeJobsTool
+            from tools.crawler.job_mapping import map_liepin, upsert_jobs
+
+            items = await browser.search_jobs(
+                keyword=keyword,
+                city_code=params.get("city", ""),
+                salary_code=params.get("salaryCode", ""),
+                max_pages=params.get("maxPages", 2),
+                max_items=params.get("maxItems", 100),
+                progress=lambda msg: asyncio.ensure_future(_update_progress(msg)),
+            )
+
+            if not items:
+                if store:
+                    await store.update_status(task_id, "completed", "未找到岗位")
+                    await _push_task_panel(store)
                 return
-            if error_msg:
-                await store.update_progress(task_id, f"⚠️ {error_msg}")
-                await _push_task_panel(store)
-                return
-            text = "运行中"
-            try:
-                sr = await getjob_client.get_stats(p)
-                if sr.get("success"):
-                    total = sr["data"].get("kpi", {}).get("total", 0)
-                    if total > 0:
-                        text = f"已采集 {total} 条"
-            except Exception:
-                pass
-            if not is_running:
-                text = "正在完成..."
-            await store.update_progress(task_id, text)
-            await _push_task_panel(store)
 
-        async def _on_complete(p: str) -> dict:
-            from tools.getjob.platform_sync import SyncJobsTool
-            if not db:
-                return {}
-            sync_result = await SyncJobsTool().execute({"platform": p}, {"db": db, "getjob_client": getjob_client})
+            # 写入 DB
+            rows = [map_liepin(item) for item in items]
+            inserted, updated = await upsert_jobs(db, rows)
 
-            # 同步后过滤：根据用户采集参数删除不匹配的数据
-            filtered = await _post_sync_filter(db, config_data, sync_result)
+            # 同步后过滤
+            config_data = {k: params[k] for k in ("keywords", "city", "salaryCode") if k in params and params[k]}
+            filtered = await _post_sync_filter(db, config_data, {"data": {"inserted": inserted}}) if config_data else 0
+
+            msg = f"采集 {len(items)} 条，新增 {inserted}"
             if filtered:
-                sync_result.setdefault("data", {})["filtered"] = filtered
+                msg += f"，过滤 {filtered} 条"
 
             if store:
-                msg = "已完成"
-                data = sync_result.get("data", sync_result)
-                inserted = data.get("inserted", 0)
-                total = data.get("total_fetched", 0)
-                if total:
-                    msg = f"同步 {total} 条，新增 {inserted}"
-                    if filtered:
-                        msg += f"，过滤 {filtered} 条"
                 await store.update_status(task_id, "completed", msg)
                 await _push_task_panel(store)
-            return sync_result
+            if card_el:
+                card_el.props["status"] = "completed"
+                card_el.props["result_message"] = msg
+                try:
+                    await card_el.update()
+                except Exception:
+                    pass
 
-        task_monitor.start_polling(
-            task_id=task_id, platform=platform, client=getjob_client,
-            progress_callback=_progress,
-            on_complete=_on_complete,
-            agent_busy_check=lambda: cl.user_session.get("agent_busy", False),
-        )
+        except Exception as e:
+            logger.error("采集任务失败: %s", e)
+            if store:
+                await store.update_status(task_id, "failed", str(e))
+                await _push_task_panel(store)
+
+    async def _update_progress(msg: str):
+        if store:
+            await store.update_progress(task_id, msg)
+            await _push_task_panel(store)
+
+    # 后台执行，不阻塞 UI
+    asyncio.create_task(_run_scrape())
 
 
 async def _execute_fetch_detail(params: dict, job_ids: list, card_el):
-    """执行批量获取岗位详情"""
+    """执行批量获取岗位详情 — 直接用 Playwright"""
+    import time as _time
+
     if not job_ids:
         if card_el:
             card_el.props["status"] = "failed"
@@ -584,20 +608,88 @@ async def _execute_fetch_detail(params: dict, job_ids: list, card_el):
             await card_el.update()
         return
 
-    from tools.getjob.fetch_detail import FetchJobDetailTool
     db = cl.user_session.get("db")
-    result = await FetchJobDetailTool().execute(
-        {"job_ids": job_ids, "force": params.get("force", False)},
-        {"db": db, "getjob_client": cl.user_session.get("getjob_client")},
-    )
-    if card_el:
-        if result.get("success"):
-            card_el.props["status"] = "completed"
-            card_el.props["result_message"] = f"完成：获取 {result.get('fetched', 0)} 条，跳过 {result.get('skipped', 0)} 条"
-        else:
+    browser = cl.user_session.get("browser")
+    if not browser:
+        if card_el:
             card_el.props["status"] = "failed"
-            card_el.props["result_message"] = result.get("error", "获取失败")
+            card_el.props["result_message"] = "浏览器未初始化"
+            await card_el.update()
+        return
+
+    if card_el:
+        card_el.props["status"] = "completed"
+        card_el.props["result_message"] = "详情采集已启动！进度请看右侧面板 →"
         await card_el.update()
+
+    from services.task_state import TaskStateStore, TaskInfo
+    task_id = f"fetch-detail-{int(_time.time())}"
+    store = TaskStateStore(db) if db else None
+    if store:
+        await store.upsert(TaskInfo(
+            task_id=task_id, name=f"采集岗位详情（{len(job_ids)}条）",
+            platform="liepin", status="running", progress_text=f"0/{len(job_ids)}",
+        ))
+        await _push_task_panel(store)
+
+    force = params.get("force", False)
+    placeholders = ",".join("?" * len(job_ids))
+    rows = await db.execute(
+        f"SELECT id, url, title, raw_jd FROM jobs WHERE id IN ({placeholders})",
+        tuple(job_ids),
+    )
+    if not rows:
+        msg = "未找到对应岗位"
+        if store:
+            await store.update_status(task_id, "failed", msg)
+            await _push_task_panel(store)
+        return
+
+    success_count = 0
+    fail_count = 0
+    skipped_count = 0
+
+    for row in rows:
+        url = row.get("url", "")
+        local_id = row["id"]
+        raw_jd = row.get("raw_jd") or ""
+
+        if raw_jd and not force:
+            skipped_count += 1
+        elif not url or url == "#":
+            fail_count += 1
+        else:
+            jd_text = await browser.fetch_job_detail(url)
+            if jd_text:
+                await db.execute_write(
+                    "UPDATE jobs SET raw_jd = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (jd_text, local_id),
+                )
+                success_count += 1
+            else:
+                fail_count += 1
+
+        done = success_count + fail_count + skipped_count
+        if store:
+            await store.update_progress(task_id, f"{done}/{len(rows)} 成功{success_count} 失败{fail_count}")
+            await _push_task_panel(store)
+
+    msg = f"完成：获取 {success_count} 条，跳过 {skipped_count} 条"
+    if fail_count:
+        msg += f"，失败 {fail_count} 条"
+    final_status = "completed" if success_count > 0 or skipped_count > 0 else "failed"
+
+    if store:
+        await store.update_status(task_id, final_status, msg)
+        await _push_task_panel(store)
+    if card_el:
+        card_el.props["status"] = final_status
+        card_el.props["result_message"] = msg
+        try: await card_el.update()
+        except Exception: pass
+
+    if success_count > 0:
+        await _refresh_job_list_element(db)
 
 
 async def _execute_deliver(params: dict, job_ids: list, card_el):
@@ -609,15 +701,16 @@ async def _execute_deliver(params: dict, job_ids: list, card_el):
             await card_el.update()
         return
 
-    from tools.getjob.platform_deliver import PlatformDeliverTool
-    result = await PlatformDeliverTool().execute(
+    from tools.crawler.deliver import DeliverTool
+    db = cl.user_session.get("db")
+    result = await DeliverTool().execute(
         {"platform": "liepin", "job_ids": job_ids},
-        {"getjob_client": cl.user_session.get("getjob_client")},
+        {"browser": cl.user_session.get("browser"), "db": db, "llm_client": cl.user_session.get("executor")._llm if cl.user_session.get("executor") else None},
     )
     if card_el:
         if result.get("success"):
             card_el.props["status"] = "completed"
-            card_el.props["result_message"] = "投递完成！"
+            card_el.props["result_message"] = f"投递完成！成功 {result.get('delivered', 0)} 条"
         else:
             card_el.props["status"] = "failed"
             card_el.props["result_message"] = result.get("error", "投递失败")
@@ -747,7 +840,7 @@ async def handle_user_message(content: str):
     # 标记 agent 正在处理中（后台任务通知会据此判断是否直接推送 UI）
     cl.user_session.set("agent_busy", True)
 
-    async for event in executor.chat(messages=history, context={"db": db, "llm_client": executor._llm, "getjob_client": cl.user_session.get("getjob_client"), "task_monitor": cl.user_session.get("task_monitor"), "agent_busy_check": lambda: cl.user_session.get("agent_busy", False), "conversation_logger": conv_logger}, system_prompt=system_prompt):
+    async for event in executor.chat(messages=history, context={"db": db, "llm_client": executor._llm, "browser": cl.user_session.get("browser"), "task_monitor": cl.user_session.get("task_monitor"), "agent_busy_check": lambda: cl.user_session.get("agent_busy", False), "conversation_logger": conv_logger}, system_prompt=system_prompt):
         # 收集事件到 trace
         trace_events.append(event.to_dict())
 
@@ -817,6 +910,7 @@ async def handle_user_message(content: str):
                     for j in for_ui["jobs"]:
                         id_map[j["seq"]] = {"id": j["id"], "title": j["title"], "company": j["company"]}
                     cl.user_session.set("job_id_map", id_map)
+                    cl.user_session.set("last_job_list_element", element)
 
         elif event.type == "error":
             error_text = event.data.get("message", "")

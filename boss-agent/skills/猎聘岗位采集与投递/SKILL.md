@@ -1,184 +1,81 @@
 ---
 name: 猎聘岗位采集与投递
-description: 通过 getjob 服务控制猎聘平台的岗位搜索、爬取、匹配分析和精准投递
-when_to_use: 当用户需要搜索岗位、爬取数据、投递简历、查看投递进度时
+description: 通过浏览器自动化搜索猎聘岗位、获取 JD 详情、精准投递
+when_to_use: 当用户需要搜索岗位、爬取数据、投递简历时
 memory_categories: [job_sprint_goals, career_planning, key_points]
-allowed-tools: [getjob_service_manage, platform_status, platform_start_task, platform_stop_task, platform_get_config, platform_update_config, sync_jobs, platform_stats, query_jobs, get_user_profile, get_memory, fetch_job_detail]
+allowed-tools: [sync_jobs, fetch_job_detail, platform_deliver, query_jobs, get_user_profile, get_memory]
 ---
 
 ## 场景描述
 
-用户需要在猎聘平台搜索岗位、爬取数据、或投递简历。所有浏览器操作由 getjob 服务（Java）执行，AI 通过 HTTP API 控制。AI 负责决策和编排，getjob 负责执行。
+用户需要在猎聘平台搜索岗位、获取 JD 详情、或投递打招呼。浏览器自动化由内置 Playwright 执行，无需外部服务。
 
 ## 核心原则
 
-1. **每一步都要检查状态**：调用任何 Tool 后，必须检查返回的 success 字段
-2. **失败时不要卡死**：如果某步失败，告诉用户原因，给出解决建议，等用户反馈后再继续
-3. **用户确认优先**：投递前必须让用户确认，不要自动投递
-4. **岗位链接很重要**：推荐岗位时一定要附上猎聘链接，用户可以直接点击查看详情
+1. **每一步都要检查返回值**：调用 Tool 后检查 success 字段
+2. **用户确认优先**：投递前必须让用户确认
+3. **岗位链接很重要**：推荐岗位时附上猎聘链接
+4. **精准搜索**：基于用户画像构建搜索条件，宁少勿多
 
-## 前置检查流程（每次操作前必须执行）
+## 场景 A：搜索岗位
 
-### 第一步：检查 getjob 服务是否在运行
-
-调用 `getjob_service_manage(action="check")`
-
-- **未运行**（running = false）：
-  → 调用 `getjob_service_manage(action="start")` 自动启动
-  → 启动成功后告诉用户："getjob 服务已启动，浏览器已打开，请在浏览器中用微信扫码登录猎聘"
-  → 如果启动失败，告诉用户错误原因
-  → **等待用户确认登录完成**
-
-- **已运行**（running = true）：
-  → 继续下一步
-
-### 第二步：检查猎聘登录状态
-
-调用 `platform_status(platform="liepin")`
-
-## 场景 A：搜索并爬取岗位（只爬不投）
-
-用户说"帮我搜岗位"、"找一下上海的 AI 岗位"等。
+用户说"帮我搜岗位"、"找上海的 AI 岗位"等。
 
 ### 执行步骤
 
-1. **前置检查**（见上方流程）
-
-2. **获取搜索条件**
-   - 调用 `get_user_profile()` 检查用户画像
-   - 有画像 → 从 target_cities、target_roles、salary_min/max 提取条件
-   - 无画像 → 从对话中提取，信息不足就问用户
+1. **获取搜索条件**
+   - 调用 `get_user_profile()` 获取画像（target_cities、target_roles、salary）
    - 调用 `get_memory(category="job_sprint_goals")` 补充近期目标
-   - 用户明确说的条件 **优先级最高**
+   - 用户明确说的条件优先级最高
+   - 信息不足就问用户
 
-3. **配置 getjob 为仅爬取模式**
+2. **向用户确认搜索条件**
+   - "我准备搜索：关键词【AI工程师】，城市【上海】。要调整吗？"
+
+3. **启动采集**
    ```
-   platform_update_config(platform="liepin", config={
-     "keywords": "[\"AI工程师\",\"Python后端\"]",
-     "city": "上海",
-     "salaryCode": "15$30",
-     "scrapeOnly": true    ← 关键：只爬不投
-   })
-   ```
-   - 检查返回 success=true
-   - 如果失败，告诉用户配置更新失败的原因
-
-4. **向用户确认搜索条件**
-   - "我准备在猎聘搜索：关键词【AI工程师、Python后端】，城市【上海】，薪资【15-30K】。要调整吗？"
-   - 等用户确认
-
-5. **启动爬取任务**
-   ```
-   platform_start_task(platform="liepin")
-   ```
-   - 检查返回 success=true
-   - 告诉用户："爬取任务已启动，你可以继续跟我聊天"
-
-6. **用户问进度时**
-   ```
-   platform_stats(platform="liepin")
-   ```
-   - 返回已爬取数量、按城市/行业分布等
-
-7. **爬取完成后同步数据**
-   - 先检查 `platform_status` 确认 isRunning=false
-   ```
-   sync_jobs(platform="liepin")
-   ```
-   - 告诉用户："爬取完成，新增 XX 条岗位，更新 XX 条"
-
-## 场景 B：投递岗位
-
-用户说"帮我投递"、"投前 5 个"等。
-
-### 执行步骤
-
-1. **前置检查**
-
-2. **配置 getjob 为投递模式**
-   ```
-   platform_update_config(platform="liepin", config={
-     "scrapeOnly": false    ← 关键：开启投递
-   })
+   sync_jobs(platform="liepin", keyword="AI工程师", city_code="上海", max_pages=2)
    ```
 
-3. **确认投递**
-   - "我将启动猎聘投递任务，会对搜索到的岗位自动发送打招呼消息。确认开始吗？"
-   - **必须等用户确认**
-
-4. **启动投递任务**
+4. **采集完成后查询结果**
    ```
-   platform_start_task(platform="liepin")
+   query_jobs(keyword="AI", city="上海")
    ```
 
-5. **投递完成后**
-   - 同步数据到本地
-   - 汇报投递结果
+## 场景 B：获取岗位详情
 
-## 场景 C：查看投递状态
-
-用户说"投递情况怎么样"、"进度如何"等。
+用户说"帮我看看这个岗位"、"分析匹配度"等。
 
 ```
-platform_status(platform="liepin")   → 任务是否在运行
-platform_stats(platform="liepin")    → 统计数据
+fetch_job_detail(job_ids=[1, 2, 3], confirm=true)
 ```
 
-组合两个结果，用自然语言汇报。
+- 已有 JD 的不重复爬取
+- 按需爬取，不要一次爬大量
 
-## 场景 D：停止任务
+## 场景 C：投递打招呼
 
-用户说"停止"、"别投了"等。
+用户说"帮我投递"、"投这几个"等。
 
 ```
-platform_stop_task(platform="liepin")
+platform_deliver(platform="liepin", job_ids=[1, 2, 3])
 ```
+
+- **必须等用户确认后再投递**
+- 会根据用户画像 + JD 自动生成个性化打招呼语
+
+## 精准搜索策略
+
+1. 从 `get_user_profile()` 获取 target_cities、target_roles、salary_min/max、skills
+2. 从 `get_memory(category="job_sprint_goals")` 获取最新目标
+3. keywords 要具体（"AI Agent 工程师" 而非 "工程师"）
+4. 宁可条件严格结果少，也不要条件宽泛结果杂
 
 ## 错误处理
 
-| 错误情况 | AI 应该做什么 |
-|---------|-------------|
-| getjob 服务不可达 | 告诉用户启动 getjob，等用户反馈 |
-| 未登录 | 引导用户扫码登录，等用户反馈后再次检查 |
-| 任务已在运行 | 问用户要等还是停止 |
-| 配置更新失败 | 告诉用户具体错误，尝试重新配置 |
-| 启动任务失败 | 告诉用户错误原因，建议检查 getjob 日志 |
-| 同步数据失败 | 告诉用户，建议稍后重试 |
-
-## 注意事项
-
-- 猎聘的打招呼语由猎聘 App 设置，程序无法修改。如果用户想改打招呼语，告诉他在猎聘 App 中设置
-- 猎聘默认打招呼无上限，但主动发消息有上限
-- 不要在一次对话中反复启动任务，注意平台风控
-- 每次操作前都要检查状态，不要假设上一步的状态还有效
-- 用户画像中的条件是参考，用户当前说的话永远优先
-
-## 精准搜索策略（重要）
-
-**不要盲目爬取大量岗位。** 搜索条件必须基于用户画像精准构建：
-
-1. 调用 `get_user_profile()` 获取：target_cities、target_roles、salary_min/max、skills、years_of_experience
-2. 调用 `get_memory(category="job_sprint_goals")` 获取最新求职目标
-3. 基于以上信息构建精准的 keywords + city + salaryCode
-4. keywords 应该具体（如 "AI Agent 工程师" 而非 "工程师"）
-5. 宁可搜索条件严格、结果少而准，也不要条件宽泛、结果多而杂
-
-## 场景 E：爬取岗位详情（获取完整 JD）
-
-用户说"帮我看看这个岗位的详细要求"、"分析一下这几个岗位"、"哪个更适合我"等。
-
-**触发条件**：需要分析岗位匹配度、生成定制简历、或用户想了解具体 JD 时。
-
-### 执行步骤
-
-1. 确定要爬取详情的岗位（通过 job_id 或 url）
-2. 调用 `fetch_job_detail(job_id=xxx)` 爬取详情页
-   - 返回 JD 文本，自动写回数据库的 raw_jd 字段
-   - 每次只爬一个，爬完再爬下一个（避免触发风控）
-   - 两次爬取之间建议间隔几秒
-3. 基于 JD 内容 + 用户画像，分析匹配度
-4. 告诉用户：这个岗位要求什么、你匹配什么、差距在哪
-
-### 注意
-- 不要一次性爬取大量详情页，按需爬取（用户感兴趣的才爬）
-- 已有 raw_jd 的岗位不需要重复爬取
+| 错误 | 处理 |
+|------|------|
+| 浏览器未初始化 | 告诉用户刷新页面重试 |
+| 未登录猎聘 | 引导用户扫码登录 |
+| 搜索无结果 | 建议放宽条件 |
+| 详情获取失败 | 建议稍后重试 |

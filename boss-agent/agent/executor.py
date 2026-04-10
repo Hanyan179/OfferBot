@@ -193,17 +193,29 @@ class Executor:
                     tool_args = {}
 
                 call = ToolCall(tool_name=tool_name, arguments=tool_args)
-                yield AgentEvent.tool_start(call)
 
                 result = await self._execute_tool(call, context or {}, max_retries=3)
+
+                # 先检查是否为 confirm_required（action_card）
+                # 是的话跳过 tool_start/tool_result，不在 UI 上产生 Step 小卡片
+                result_content = result.message.content if result.message else ""
+                try:
+                    result_parsed = json.loads(result_content)
+                    if isinstance(result_parsed, dict) and result_parsed.get("action") == "confirm_required":
+                        yield AgentEvent.action_card(result_parsed)
+                        return
+                except (json.JSONDecodeError, TypeError):
+                    result_parsed = None
+
+                yield AgentEvent.tool_start(call)
                 yield AgentEvent.tool_result(result)
 
-                # 检查是否为 action_card（需要用户确认的操作）
-                result_content = result.message.content if result.message else ""
+                # 检查其他特殊返回值
                 is_action_card = False
                 is_ui_render = False
                 try:
-                    result_parsed = json.loads(result_content)
+                    if result_parsed is None:
+                        result_parsed = json.loads(result_content)
                     if isinstance(result_parsed, dict):
                         # Tool 返回值驱动：自动激活 toolset
                         toolsets_to_activate = result_parsed.pop("_activate_toolsets", None)
@@ -211,11 +223,7 @@ class Executor:
                             for ts in toolsets_to_activate:
                                 context["active_toolsets"].add(ts)
 
-                        if result_parsed.get("action") == "confirm_required":
-                            yield AgentEvent.action_card(result_parsed)
-                            is_action_card = True
-                            return  # 立即结束 loop
-                        elif "for_ui" in result_parsed and "for_agent" in result_parsed:
+                        if "for_ui" in result_parsed and "for_agent" in result_parsed:
                             # 结果分流：for_ui 推前端渲染，for_agent 给 LLM
                             yield AgentEvent.ui_render({
                                 "tool_name": tool_name,

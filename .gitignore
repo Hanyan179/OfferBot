@@ -84,3 +84,4 @@ chainlit-fork/
 # 内部 spec 文档
 boss-agent/docs/
 boss-agent/lib/
+boss-agent/data/liepin_cookies.json

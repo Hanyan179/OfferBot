@@ -63,7 +63,9 @@ def _get_memory_dir(context: Any = None) -> Path:
 def _get_file_path(category: str, memory_dir: Path) -> Path:
     """根据分类获取对应的 .md 文件路径。自定义分类自动生成文件名。"""
     filename = CATEGORY_FILE_MAP.get(category, f"{category}.md")
-    return memory_dir / filename
+    # 防止路径遍历（LLM 幻觉可能生成 ../../ 等）
+    safe = Path(filename).name
+    return memory_dir / safe
 
 
 def _get_display_name(category: str) -> str:
@@ -299,9 +301,10 @@ class GetMemoryTool(Tool):
         }
 
     async def execute(self, params: dict, context: Any) -> dict:
-        cats = params.get("categories") or []
+        from agent.tool_registry import ensure_list
+        cats = ensure_list(params.get("categories"), str)
         if not cats and params.get("category"):
-            cats = [params["category"]]
+            cats = ensure_list(params["category"], str)
         if not cats:
             return {"error": "请提供 category 或 categories"}
 

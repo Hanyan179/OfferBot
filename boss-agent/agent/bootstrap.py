@@ -43,16 +43,9 @@ from tools.data.memory_tools import (
 from tools.data.query_jobs import QueryJobsTool
 from tools.data.stats import GetStatsTool
 from tools.data.user_profile import GetUserProfileTool, UpdateUserProfileTool
-from tools.getjob.fetch_detail import FetchJobDetailTool
-from tools.getjob.platform_config import PlatformGetConfigTool, PlatformUpdateConfigTool
-from tools.getjob.platform_control import PlatformStartTaskTool, PlatformStopTaskTool
-from tools.getjob.platform_deliver import PlatformDeliverTool
-from tools.getjob.platform_stats import PlatformStatsTool
-
-# Getjob Tools
-from tools.getjob.platform_status import PlatformStatusTool
-from tools.getjob.platform_sync import SyncJobsTool
-from tools.getjob.service_manager import GetjobServiceManagerTool
+from tools.crawler.scrape_jobs import ScrapeJobsTool
+from tools.crawler.fetch_detail import FetchDetailTool
+from tools.crawler.deliver import DeliverTool
 
 
 def create_tool_registry() -> tuple[ToolRegistry, SkillLoader]:
@@ -86,17 +79,10 @@ def create_tool_registry() -> tuple[ToolRegistry, SkillLoader]:
     registry.register(WebFetchTool())
     registry.register(WebSearchTool())
 
-    # --- Getjob Tools ---
-    registry.register(PlatformStatusTool())
-    registry.register(PlatformStartTaskTool())
-    registry.register(PlatformStopTaskTool())
-    registry.register(PlatformGetConfigTool())
-    registry.register(PlatformUpdateConfigTool())
-    registry.register(SyncJobsTool())
-    registry.register(PlatformStatsTool())
-    registry.register(GetjobServiceManagerTool())
-    registry.register(FetchJobDetailTool())
-    registry.register(PlatformDeliverTool())
+    # --- Crawler Tools (Playwright) ---
+    registry.register(ScrapeJobsTool())
+    registry.register(FetchDetailTool())
+    registry.register(DeliverTool())
 
     # --- AI Tools ---
     skill_loader = SkillLoader(registry=registry)
@@ -109,21 +95,19 @@ def create_tool_registry() -> tuple[ToolRegistry, SkillLoader]:
     return registry, skill_loader
 
 
-def bootstrap(db: Database, api_key: str, model: str = "qwen-plus", base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1", getjob_base_url: str = "http://localhost:8888") -> dict:
+def bootstrap(db: Database, api_key: str, model: str = "qwen-plus", base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1") -> dict:
     """
     完整的应用启动引导。
 
     Returns:
-        dict with keys: registry, planner, executor, getjob_client
+        dict with keys: registry, planner, executor, skill_loader
     """
     from agent.executor import Executor
     from agent.llm_client import LLMClient
     from agent.planner import Planner
-    from services.getjob_client import GetjobClient
 
     registry, skill_loader = create_tool_registry()
     llm_client = LLMClient(api_key=api_key, model=model, base_url=base_url)
-    getjob_client = GetjobClient(base_url=getjob_base_url)
 
     planner = Planner(
         tool_registry=registry,
@@ -139,6 +123,5 @@ def bootstrap(db: Database, api_key: str, model: str = "qwen-plus", base_url: st
         "registry": registry,
         "planner": planner,
         "executor": executor,
-        "getjob_client": getjob_client,
         "skill_loader": skill_loader,
     }

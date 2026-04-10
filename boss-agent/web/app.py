@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import re
 import sys
+import urllib.parse
 from datetime import datetime
 from pathlib import Path
 
@@ -566,11 +567,10 @@ async def api_test_chat(request: Request):
 
                 if tool:
                     try:
-                        from services.getjob_client import GetjobClient
                         from services.task_monitor import TaskMonitor
 
                         result = await tool.execute(tool_args, context={
-                            "db": db, "getjob_client": GetjobClient(), "task_monitor": TaskMonitor(),
+                            "db": db, "task_monitor": TaskMonitor(),
                             "agent_busy_check": lambda: False,
                             "active_toolsets": active_toolsets, "registry": registry,
                         })
@@ -624,12 +624,8 @@ async def api_get_tasks():
 
 @app.post("/api/tasks/{platform}/stop")
 async def api_stop_task(platform: str):
-    """停止指定平台的采集任务"""
-    from services.getjob_client import GetjobClient
-    client = GetjobClient(load_config().getjob_base_url)
-    result = await client.stop_task(platform)
-    await client.close()
-    return JSONResponse(result)
+    """停止指定平台的采集任务（Playwright 模式下暂不支持）"""
+    return JSONResponse({"success": False, "error": "暂不支持停止任务"})
 
 
 @app.get("/api/jobs")
@@ -755,6 +751,27 @@ async def api_update_resume(request: Request):
     svc = ResumeService(db)
     result = await svc.update_resume(body)
     return JSONResponse({"ok": True, "fields": result["fields"]})
+
+
+@app.get("/api/resume/export/docx")
+async def api_resume_export_docx():
+    """导出当前活跃简历为 DOCX 文件下载。"""
+    from web.resume_service import ResumeService
+
+    db = await _get_db()
+    svc = ResumeService(db)
+    try:
+        docx_bytes, filename = await svc.export_docx()
+    except ValueError as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=404)
+
+    from starlette.responses import Response
+    encoded = urllib.parse.quote(filename)
+    return Response(
+        content=docx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename*=UTF-8\'\'{encoded}'},
+    )
 
 
 @app.post("/api/resume/upload")
@@ -1076,23 +1093,8 @@ async def api_save_job_analysis(job_id: int, request: Request):
 
 @app.post("/api/jobs/{job_id}/fetch-detail")
 async def api_fetch_job_detail(job_id: int, request: Request):
-    """获取单个岗位 JD"""
-    from services.getjob_client import GetjobClient
-    from tools.getjob.fetch_detail import FetchJobDetailTool
-    db = await _get_db()
-    tool = FetchJobDetailTool()
-    client = GetjobClient(load_config().getjob_base_url)
-    body = {}
-    try:
-        body = await request.json()
-    except Exception:
-        pass
-    result = await tool.execute(
-        {"job_id": job_id, "force": body.get("force", False)},
-        {"db": db, "getjob_client": client},
-    )
-    await client.close()
-    return JSONResponse(result)
+    """获取单个岗位 JD（暂不支持从 API 直接调用 Playwright，请通过对话触发）"""
+    return JSONResponse({"success": False, "error": "请通过对话触发岗位详情获取"})
 
 
 @app.get("/job/{job_id}")
