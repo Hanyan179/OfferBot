@@ -21,6 +21,11 @@ venv/
 .DS_Store
 Thumbs.db
 
+# === 微信/临时图片 ===
+微信图片*
+icon_transparent.png
+logo_transparent.png
+
 # === 测试/缓存 ===
 .pytest_cache/
 .hypothesis/
@@ -65,6 +70,9 @@ reference-crawler/
 # === 其他 ===
 *.log
 backup_before_delete.csv
+boss-agent/scripts/output/
+boss-agent/data/rag_e2e_report.json
+PARALLEL-WORK.md
 
 # 内部笔记
 notes/
