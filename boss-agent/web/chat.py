@@ -71,6 +71,17 @@ async def _ensure_agent_ready(db: Database, config) -> bool:
     return await _init_agent(db, **llm_config)
 
 
+async def _load_persona(db: Database) -> str:
+    """从数据库读取人格配置，返回 'ni' 或 'wo'，默认 'ni'。"""
+    try:
+        rows = await db.execute("SELECT value FROM user_preferences WHERE key = ?", ("persona",))
+        if rows and rows[0]["value"] in ("ni", "wo"):
+            return rows[0]["value"]
+    except Exception:
+        pass
+    return "ni"
+
+
 async def _load_llm_config(db: Database) -> dict | None:
     """从数据库读取 LLM 配置，返回 {api_key, base_url, model} 或 None。"""
     keys = ("llm_provider", "llm_api_key", "llm_base_url", "llm_model")
@@ -193,11 +204,16 @@ async def on_chat_resume(thread):
     context_preamble = await ctx_builder.build_preamble(db=db)
     cl.user_session.set("context_preamble", context_preamble)
 
+    # 加载人格配置
+    persona = await _load_persona(db)
+    cl.user_session.set("persona", persona)
+
     # System prompt + Skills + Context Preamble
     skills_section = ""
     full_system_prompt = build_full_system_prompt(
         skills_prompt_section=skills_section,
         context_preamble=context_preamble,
+        persona=persona,
     )
     cl.user_session.set("system_prompt", full_system_prompt)
 
@@ -215,6 +231,7 @@ async def on_chat_resume(thread):
         full_system_prompt = build_full_system_prompt(
             skills_prompt_section=skills_section,
             context_preamble=context_preamble,
+            persona=persona,
         )
         cl.user_session.set("system_prompt", full_system_prompt)
 
@@ -276,11 +293,16 @@ async def on_chat_start():
     context_preamble = await ctx_builder.build_preamble(db=db)
     cl.user_session.set("context_preamble", context_preamble)
 
+    # 加载人格配置
+    persona = await _load_persona(db)
+    cl.user_session.set("persona", persona)
+
     # --- 构建完整 System Prompt（基础 + 记忆指引 + Skills + 上下文前言） ---
     skills_section = ""
     full_system_prompt = build_full_system_prompt(
         skills_prompt_section=skills_section,
         context_preamble=context_preamble,
+        persona=persona,
     )
     cl.user_session.set("system_prompt", full_system_prompt)
 
@@ -294,6 +316,7 @@ async def on_chat_start():
         full_system_prompt = build_full_system_prompt(
             skills_prompt_section=skills_section,
             context_preamble=context_preamble,
+            persona=persona,
         )
         cl.user_session.set("system_prompt", full_system_prompt)
 

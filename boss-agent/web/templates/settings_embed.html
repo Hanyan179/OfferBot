@@ -34,6 +34,12 @@ th { text-align: left; padding: 8px 12px; color: #6b7280; font-weight: 500; back
 html.dark th { background: #2a2a2a; color: #8e8e93; }
 td { padding: 8px 12px; border-bottom: 1px solid rgba(0,0,0,.04); }
 html.dark td { border-bottom-color: rgba(255,255,255,.06); }
+.persona-option input[type="radio"] { display: none; }
+.persona-card { border: 2px solid rgba(0,0,0,.08); border-radius: 12px; padding: 14px; text-align: center; cursor: pointer; transition: all .15s; }
+html.dark .persona-card { border-color: rgba(255,255,255,.1); }
+.persona-option input[type="radio"]:checked + .persona-card { border-color: #007aff; background: rgba(0,122,255,.05); }
+html.dark .persona-option input[type="radio"]:checked + .persona-card { background: rgba(0,122,255,.12); }
+.persona-card:hover { border-color: rgba(0,122,255,.3); }
 </style>
 </head>
 <body>
@@ -78,6 +84,31 @@ html.dark td { border-bottom-color: rgba(255,255,255,.06); }
   </div>
 
   <div class="card">
+    <h3 style="font-size:14px;font-weight:600;margin-bottom:12px;">🎭 人格模式</h3>
+    <p style="font-size:12px;color:#86868b;margin-bottom:12px;">切换 AI 的表达视角。「你」模式下 AI 作为顾问帮助你；「我」模式下 AI 以第一人称自述，像你自己在思考。</p>
+    <div style="display:flex;gap:10px;">
+      <label class="persona-option" style="flex:1;">
+        <input type="radio" name="persona" value="ni" {% if persona == 'ni' %}checked{% endif %}>
+        <div class="persona-card">
+          <div style="font-size:20px;margin-bottom:4px;">🤝</div>
+          <div style="font-size:13px;font-weight:600;">你（默认）</div>
+          <div style="font-size:11px;color:#86868b;margin-top:2px;">AI 作为顾问，帮助「你」</div>
+          <div style="font-size:11px;color:#86868b;font-style:italic;margin-top:4px;">"我帮你看看适合的岗位"</div>
+        </div>
+      </label>
+      <label class="persona-option" style="flex:1;">
+        <input type="radio" name="persona" value="wo" {% if persona == 'wo' %}checked{% endif %}>
+        <div class="persona-card">
+          <div style="font-size:20px;margin-bottom:4px;">🪞</div>
+          <div style="font-size:13px;font-weight:600;">我</div>
+          <div style="font-size:11px;color:#86868b;margin-top:2px;">AI 以「我」的身份自述</div>
+          <div style="font-size:11px;color:#86868b;font-style:italic;margin-top:4px;">"我来看看适合我的岗位"</div>
+        </div>
+      </label>
+    </div>
+  </div>
+
+  <div class="card">
     <h3 style="font-size:14px;font-weight:600;margin-bottom:10px;">厂商预设参考</h3>
     <table>
       <thead><tr><th>厂商</th><th>Base URL</th><th>默认模型</th></tr></thead>
@@ -108,7 +139,8 @@ document.getElementById("settingsForm").addEventListener("submit", async (e) => 
   e.preventDefault();
   const msg = document.getElementById("statusMsg");
   msg.textContent = "保存中..."; msg.style.color = "#86868b";
-  const body = { provider: document.getElementById("provider").value, api_key: document.getElementById("api_key").value, base_url: document.getElementById("base_url").value, model: document.getElementById("model").value };
+  const personaEl = document.querySelector('input[name="persona"]:checked');
+  const body = { provider: document.getElementById("provider").value, api_key: document.getElementById("api_key").value, base_url: document.getElementById("base_url").value, model: document.getElementById("model").value, persona: personaEl ? personaEl.value : "ni" };
   try {
     const res = await fetch("/api/settings", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body) });
     const data = await res.json();

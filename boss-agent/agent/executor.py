@@ -236,29 +236,6 @@ class Executor:
                 except (json.JSONDecodeError, TypeError):
                     pass
 
-                if not is_action_card and not is_ui_render and len(result_content) > 2000:
-                    # 尝试解析 JSON，提取关键字段做摘要
-                    try:
-                        import json as _json
-                        data = _json.loads(result_content)
-                        summary_parts = []
-                        if isinstance(data, dict):
-                            if "success" in data:
-                                summary_parts.append(f"success={data['success']}")
-                            if data.get("error"):
-                                summary_parts.append(f"error={data['error']}")
-                            if "message" in data:
-                                summary_parts.append(f"message={data['message']}")
-                            # 数据类结果：只保留计数
-                            if "data" in data and isinstance(data["data"], dict):
-                                for k, v in data["data"].items():
-                                    if isinstance(v, (int, float, str, bool)):
-                                        summary_parts.append(f"{k}={v}")
-                                    elif isinstance(v, list):
-                                        summary_parts.append(f"{k}=[{len(v)} items]")
-                        result_content = "{" + ", ".join(summary_parts) + "}"
-                    except Exception:
-                        result_content = result_content[:1500] + "...(truncated)"
                 full_messages.append({
                     "role": "tool",
                     "tool_call_id": tc.id,

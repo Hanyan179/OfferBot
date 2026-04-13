@@ -229,11 +229,15 @@ async def page_settings(request: Request):
     db = await _get_db()
     settings = await _load_llm_settings(db)
     config = load_config()
+    # 加载人格配置
+    persona_rows = await db.execute("SELECT value FROM user_preferences WHERE key = ?", ("persona",))
+    persona = persona_rows[0]["value"] if persona_rows and persona_rows[0]["value"] in ("ni", "wo") else "ni"
     return templates.TemplateResponse(request, "settings_embed.html", {
         "provider": settings.get("llm_provider") or "dashscope",
         "api_key": settings.get("llm_api_key") or config.dashscope_api_key,
         "base_url": settings.get("llm_base_url") or config.api_base_url,
         "model": settings.get("llm_model") or config.dashscope_llm_model,
+        "persona": persona,
     })
 
 
@@ -380,6 +384,16 @@ async def save_settings(request: Request):
 
         db = await _get_db()
         await _save_llm_settings(db, provider, api_key, base_url, model)
+
+        # 同时保存人格配置（如果有）
+        persona = body.get("persona", "").strip()
+        if persona in ("ni", "wo"):
+            await db.execute_write(
+                "INSERT INTO user_preferences (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP",
+                ("persona", persona),
+            )
+
         return JSONResponse({"ok": True})
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)})
