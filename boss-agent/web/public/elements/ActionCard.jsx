@@ -110,7 +110,7 @@ export default function ActionCard() {
       case 'number':
         return <Input type="number" value={val} onChange={e => handleChange(field.id, Number(e.target.value))} disabled={disabled} className="w-24" />
       default:
-        return <Input value={val} onChange={e => handleChange(field.id, e.target.value)} disabled={disabled} />
+        return <Input value={val} onChange={e => handleChange(field.id, e.target.value)} disabled={disabled} placeholder={field.placeholder || ''} />
     }
   }
 
@@ -172,7 +172,7 @@ export default function ActionCard() {
                       {props.card_type === "fetch_detail" && (
                         <TableCell>
                           <Badge variant={job.has_jd ? "default" : "outline"} className="text-xs">
-                            {job.has_jd ? "有" : "无"}
+                            {job.has_jd ? "有详情" : "无"}
                           </Badge>
                         </TableCell>
                       )}

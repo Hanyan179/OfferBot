@@ -63,7 +63,16 @@ class GetUserProfileTool(Tool):
             prefs = pref_rows[0] if pref_rows else None
 
         if resume is None:
-            return {"has_profile": False, "message": "用户尚未建立个人档案"}
+            return {
+                "has_profile": False,
+                "message": "用户尚未建立个人档案",
+                "hint": (
+                    "用户还没有画像，无法进行岗位匹配、简历生成等操作。请引导用户建立档案，有两种方式：\n"
+                    "1. 引导用户上传简历文件（PDF/DOCX/MD），系统会自动解析并建立档案\n"
+                    "2. 通过自然对话了解用户（在职/离职、技术方向、工作经验、目标城市和薪资），然后调用 update_user_profile 写入\n"
+                    "不要同时追问所有信息，像朋友聊天一样自然地了解。"
+                ),
+            }
 
         # 构建可读的档案摘要
         profile = {

@@ -7,8 +7,40 @@ ToolRegistry（统一管理 Tool 的注册、发现、调用）。
 
 from __future__ import annotations
 
+import json as _json
 from abc import ABC, abstractmethod
 from typing import Any
+
+
+def ensure_list(value, item_type: type = str) -> list:
+    """将 LLM 可能传的各种格式规范化为列表。
+
+    LLM 可能传：
+    - 正常列表: [7716, 7717]
+    - JSON 字符串: "[7716, 7717]"
+    - 单个值: 7716 或 "7716"
+    - 逗号分隔: "7716,7717"
+
+    item_type 控制元素类型转换（int 或 str）。
+    """
+    if value is None:
+        return []
+    if isinstance(value, str):
+        value = value.strip()
+        try:
+            value = _json.loads(value)
+        except (ValueError, TypeError):
+            # 尝试逗号分隔
+            value = [v.strip() for v in value.split(",") if v.strip()]
+    if not isinstance(value, list):
+        value = [value]
+    result = []
+    for v in value:
+        try:
+            result.append(item_type(v))
+        except (ValueError, TypeError):
+            pass
+    return result
 
 
 class Tool(ABC):

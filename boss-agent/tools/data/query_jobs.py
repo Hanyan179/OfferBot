@@ -146,7 +146,7 @@ class QueryJobsTool(Tool):
                     "success": True,
                     "for_agent": {
                         "count": 0,
-                        "hint": "本地数据库暂无岗位数据。需要先通过猎聘获取岗位。",
+                        "hint": "本地暂无岗位数据。可调用 activate_toolset(name=\"crawl\") 激活采集工具集，引导用户采集岗位。",
                     },
                 }
             return {

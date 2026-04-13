@@ -71,7 +71,12 @@ class ContextBuilder:
             return ""
 
         if not rows or not rows[0].get("name"):
-            return "### 用户档案\n\n用户尚未建立个人档案。（无需调用 get_user_profile，确认没有档案）"
+            return (
+                "### 用户档案\n\n"
+                "用户尚未建立个人档案。（无需调用 get_user_profile，确认没有档案）\n\n"
+                "**引导策略**：当用户请求需要画像的操作（找工作、匹配分析、生成简历等）时，"
+                "请先引导用户上传简历文件或通过对话了解基本信息后建立档案。"
+            )
 
         r = rows[0]
         self._profile_cache = r

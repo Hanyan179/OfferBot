@@ -132,8 +132,8 @@ export default function JobList() {
               let statusLabel, statusCls;
               if (job.has_rag) { statusLabel = "已图谱"; statusCls = "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300"; }
               else if (job.has_analysis) { statusLabel = "已分析"; statusCls = "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300"; }
-              else if (job.has_jd) { statusLabel = "有JD"; statusCls = "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300"; }
-              else { statusLabel = "待爬取"; statusCls = "bg-muted text-muted-foreground"; }
+              else if (job.has_jd) { statusLabel = "有详情"; statusCls = "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300"; }
+              else { statusLabel = "基础"; statusCls = "bg-muted text-muted-foreground"; }
               return (
               <TableRow key={job.id}>
                 <TableCell className="text-center text-xs text-muted-foreground">{job.seq}</TableCell>
