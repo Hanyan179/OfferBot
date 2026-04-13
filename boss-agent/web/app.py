@@ -628,7 +628,7 @@ async def api_test_chat(request: Request):
 
 @app.get("/api/tasks")
 async def api_get_tasks():
-    """返回当前活跃的任务列表（运行中 + 最近完成的）"""
+    """返回当天的任务列表"""
     from services.task_state import TaskStateStore
     db = await _get_db()
     store = TaskStateStore(db)

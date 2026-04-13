@@ -18,6 +18,7 @@ from tools.ai.get_skill_content import GetSkillContentTool
 # Meta Tools (toolset routing)
 from tools.meta.activate_toolset import ActivateToolsetTool
 from tools.meta.get_data_status import GetDataStatusTool
+from tools.meta.get_task_status import GetTaskStatusTool
 
 # Browser Tools (Web)
 from tools.browser.web_fetch import WebFetchTool
@@ -91,6 +92,7 @@ def create_tool_registry() -> tuple[ToolRegistry, SkillLoader]:
     # --- Meta Tools (toolset routing) ---
     registry.register(ActivateToolsetTool())
     registry.register(GetDataStatusTool())
+    registry.register(GetTaskStatusTool())
 
     return registry, skill_loader
 

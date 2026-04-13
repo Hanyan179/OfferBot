@@ -79,14 +79,13 @@ class TaskStateStore:
         )
 
     async def get_active(self) -> list[dict]:
-        """运行中 + 最近 30 分钟完成的"""
-        from datetime import timedelta
-        cutoff = (datetime.now() - timedelta(minutes=30)).isoformat()
+        """当天的所有任务"""
+        from datetime import date
+        today = date.today().isoformat()
         rows = await self._db.execute(
-            "SELECT * FROM tasks WHERE status='running' "
-            "OR (finished_at IS NOT NULL AND finished_at > ?) "
+            "SELECT * FROM tasks WHERE date(started_at) = ? "
             "ORDER BY started_at DESC",
-            (cutoff,),
+            (today,),
         )
         return [self._row_to_dict(r) for r in rows]
 
