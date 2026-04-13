@@ -1059,7 +1059,7 @@ async def api_save_job_analysis(job_id: int, request: Request):
 
     try:
         from openai import AsyncOpenAI
-        client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=120)
+        client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=None)
         resp = await client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}],
@@ -1093,8 +1093,244 @@ async def api_save_job_analysis(job_id: int, request: Request):
 
 @app.post("/api/jobs/{job_id}/fetch-detail")
 async def api_fetch_job_detail(job_id: int, request: Request):
-    """获取单个岗位 JD（暂不支持从 API 直接调用 Playwright，请通过对话触发）"""
-    return JSONResponse({"success": False, "error": "请通过对话触发岗位详情获取"})
+    """获取单个岗位 JD — 使用 Playwright 直接抓取猎聘详情页"""
+    db = await _get_db()
+
+    rows = await db.execute(
+        "SELECT id, url, title, raw_jd FROM jobs WHERE id = ?", (job_id,)
+    )
+    if not rows:
+        return JSONResponse({"success": False, "error": "岗位不存在"}, status_code=404)
+
+    row = rows[0]
+    url = row.get("url") or ""
+    if not url or url == "#":
+        return JSONResponse({"success": False, "error": "该岗位没有详情链接"})
+
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
+    force = body.get("force", False)
+
+    # 已有 JD 且不强制 → 跳过
+    if row.get("raw_jd") and not force:
+        return JSONResponse({"success": True, "fetched": 0, "skipped": 1, "results": [
+            {"id": job_id, "title": row.get("title", ""), "source": "cache"}
+        ]})
+
+    # 使用 Playwright 获取
+    from browser.liepin import LiepinBrowser
+
+    browser = LiepinBrowser(headless=True)
+    try:
+        await browser.init()
+        jd_text = await browser.fetch_job_detail(url)
+    finally:
+        await browser.close()
+
+    if jd_text:
+        await db.execute_write(
+            "UPDATE jobs SET raw_jd = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (jd_text, job_id),
+        )
+        return JSONResponse({"success": True, "fetched": 1, "skipped": 0, "results": [
+            {"id": job_id, "title": row.get("title", ""), "jd_preview": jd_text[:200]}
+        ]})
+    else:
+        return JSONResponse({"success": False, "fetched": 0, "failed": 1, "error": "未能提取 JD 内容",
+                             "results": [{"id": job_id, "error": "JD 提取失败"}]})
+
+
+@app.post("/api/jobs/{job_id}/greeting")
+async def api_generate_greeting(job_id: int, request: Request):
+    """基于分析结果 + 用户画像，AI 生成个性化打招呼语"""
+    import json as _json
+
+    db = await _get_db()
+    rows = await db.execute(
+        "SELECT id, title, company, raw_jd, match_detail FROM jobs WHERE id = ?", (job_id,)
+    )
+    if not rows:
+        return JSONResponse({"ok": False, "error": "岗位不存在"}, status_code=404)
+    job = rows[0]
+
+    if not job.get("raw_jd"):
+        return JSONResponse({"ok": False, "error": "该岗位暂无 JD，请先获取详情"})
+    if not job.get("match_detail"):
+        return JSONResponse({"ok": False, "error": "请先完成 AI 分析"})
+
+    # 解析分析结果
+    try:
+        analysis = _json.loads(job["match_detail"])
+    except Exception:
+        analysis = {}
+
+    # 读用户简历
+    resume_data = await _load_active_resume(db)
+    resume_section = ""
+    if resume_data.get("name"):
+        skills = ", ".join(resume_data.get("tech_stack") or [])
+        resume_section = f"候选人：{resume_data.get('name','')}，{resume_data.get('current_role','')}，核心技能：{skills}"
+
+    # 读记忆画像（语言风格、沟通偏好）
+    memory_section = ""
+    from pathlib import Path as _MemPath
+    memory_dir = _MemPath(__file__).parent.parent / "data" / "记忆画像"
+    for fname in ["语言风格.md", "沟通偏好.md", "求职冲刺目标.md"]:
+        fpath = memory_dir / fname
+        if fpath.exists():
+            content = fpath.read_text(encoding="utf-8").strip()
+            if content and len(content) > 10:
+                memory_section += f"\n【{fname.replace('.md','')}】{content[:300]}"
+
+    strengths = ", ".join(analysis.get("strengths", [])[:3])
+    matched_skills = ", ".join((analysis.get("skills") or {}).get("matched", [])[:5])
+
+    prompt = f"""你是一位求职打招呼语生成专家。请根据以下信息，生成一段个性化的打招呼语。
+
+要求：
+1. 控制在 150 字以内
+2. 自然真诚，不要模板化
+3. 突出与岗位匹配的核心优势
+4. 体现候选人的个人特色和语言风格
+5. 直接输出打招呼语文本，不要加任何前缀或解释
+
+岗位：{job.get('title','')} @ {job.get('company','')}
+JD 摘要：{(job.get('raw_jd') or '')[:500]}
+
+匹配分析：
+- 总分：{analysis.get('overall_score', '?')}
+- 核心优势：{strengths}
+- 匹配技能：{matched_skills}
+- 结论：{analysis.get('verdict', '')}
+
+{resume_section}
+{memory_section}"""
+
+    settings = await _load_llm_settings(db)
+    api_key = settings.get("llm_api_key", "")
+    base_url = settings.get("llm_base_url", "")
+    model = settings.get("llm_model", "")
+    if not api_key or not base_url or not model:
+        return JSONResponse({"ok": False, "error": "请先在设置中配置 LLM"})
+
+    try:
+        from openai import AsyncOpenAI
+        client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=120)
+        resp = await client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        greeting = (resp.choices[0].message.content or "").strip()
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": f"LLM 调用失败: {e}"})
+
+    if not greeting:
+        return JSONResponse({"ok": False, "error": "生成结果为空"})
+
+    return JSONResponse({"ok": True, "greeting": greeting})
+
+
+@app.post("/api/jobs/{job_id}/send-greeting")
+async def api_send_greeting(job_id: int, request: Request):
+    """生成打招呼语并通过 Playwright 自动在猎聘发送"""
+    import json as _json
+
+    db = await _get_db()
+    rows = await db.execute(
+        "SELECT id, title, company, url, raw_jd, match_detail FROM jobs WHERE id = ?", (job_id,)
+    )
+    if not rows:
+        return JSONResponse({"ok": False, "error": "岗位不存在"}, status_code=404)
+    job = rows[0]
+
+    url = job.get("url") or ""
+    if not url or url == "#":
+        return JSONResponse({"ok": False, "error": "该岗位没有详情链接"})
+
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
+
+    # 如果前端传了自定义打招呼语就用，否则 AI 生成
+    greeting = (body.get("greeting") or "").strip()
+
+    if not greeting:
+        if not job.get("raw_jd"):
+            return JSONResponse({"ok": False, "error": "该岗位暂无 JD，请先获取详情"})
+
+        # 解析分析结果
+        analysis = {}
+        if job.get("match_detail"):
+            try:
+                analysis = _json.loads(job["match_detail"])
+            except Exception:
+                pass
+
+        resume_data = await _load_active_resume(db)
+        resume_section = ""
+        if resume_data.get("name"):
+            skills = ", ".join(resume_data.get("tech_stack") or [])
+            resume_section = f"候选人：{resume_data.get('name','')}，{resume_data.get('current_role','')}，核心技能：{skills}"
+
+        strengths = ", ".join(analysis.get("strengths", [])[:3])
+        matched_skills = ", ".join((analysis.get("skills") or {}).get("matched", [])[:5])
+
+        prompt = f"""生成一段简洁、自然的打招呼语（不超过80字）。
+要求：体现求职者与岗位的匹配点，语气真诚专业，不要模板化。直接输出打招呼语。
+
+岗位：{job.get('title','')} @ {job.get('company','')}
+JD 摘要：{(job.get('raw_jd') or '')[:500]}
+匹配优势：{strengths}
+匹配技能：{matched_skills}
+{resume_section}"""
+
+        settings = await _load_llm_settings(db)
+        api_key = settings.get("llm_api_key", "")
+        base_url = settings.get("llm_base_url", "")
+        model = settings.get("llm_model", "")
+        if not api_key or not base_url or not model:
+            return JSONResponse({"ok": False, "error": "请先在设置中配置 LLM"})
+
+        try:
+            from openai import AsyncOpenAI
+            client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=120)
+            resp = await client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            greeting = (resp.choices[0].message.content or "").strip()
+        except Exception as e:
+            return JSONResponse({"ok": False, "error": f"生成打招呼语失败: {e}"})
+
+    if not greeting:
+        return JSONResponse({"ok": False, "error": "打招呼语为空"})
+
+    # 用 Playwright 发送
+    from browser.liepin import LiepinBrowser
+
+    browser = LiepinBrowser(headless=False)
+    try:
+        await browser.init()
+        ok = await browser.deliver(url, greeting)
+    finally:
+        await browser.close()
+
+    if ok:
+        # 记录投递
+        await db.execute_write(
+            "INSERT INTO applications (job_id, greeting, status, applied_at) "
+            "VALUES (?, ?, 'sent', CURRENT_TIMESTAMP)",
+            (job_id, greeting),
+        )
+        return JSONResponse({"ok": True, "greeting": greeting, "sent": True})
+    else:
+        return JSONResponse({"ok": False, "greeting": greeting, "sent": False,
+                             "error": "发送失败（可能未登录或按钮未找到），打招呼语已生成可手动复制"})
 
 
 @app.get("/job/{job_id}")

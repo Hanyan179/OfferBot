@@ -118,7 +118,7 @@
   <div class="check-item" id="ck-service">
     <div class="check-icon">🖥️</div>
     <div class="check-info">
-      <div class="check-title">getjob 采集服务</div>
+      <div class="check-title">浏览器采集服务</div>
       <div class="check-desc" id="ck-service-desc">检查中...</div>
     </div>
     <span class="check-status status-checking" id="ck-service-status">检查中</span>
@@ -252,7 +252,7 @@ async function checkService() {
     const d = await r.json();
     const el = document.getElementById('ck-service-status');
     const desc = document.getElementById('ck-service-desc');
-    // tasks API 能响应说明 agent 在线，但 getjob 服务需要单独检查
+    // tasks API 能响应说明 agent 在线
     el.textContent = 'Agent 在线';
     el.className = 'check-status status-ok';
     desc.textContent = 'Agent 服务正常运行';

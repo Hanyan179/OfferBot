@@ -38,7 +38,7 @@ OfferBot 是一个 AI 求职顾问 Agent，帮助用户从认识自己到拿到 
 │                                                                 │
 │  ┌────────────┐    ┌────────────────────────────────────────┐   │
 │  │ bootstrap  │───▶│ 初始化: Registry + Planner + Executor  │   │
-│  └────────────┘    │ + GetjobClient + SkillLoader + RAG     │   │
+│  └────────────┘    │ + Browser + SkillLoader + RAG          │   │
 │                    └────────────────────────────────────────┘   │
 │                                                                 │
 │  ┌────────────┐    ┌────────────┐    ┌────────────────────┐    │
@@ -86,10 +86,9 @@ OfferBot 是一个 AI 求职顾问 Agent，帮助用户从认识自己到拿到 
 │   数据持久层      │    │          外部服务                        │
 │                  │    │                                         │
 │ ┌──────────────┐ │    │ ┌─────────────────────────────────────┐ │
-│ │ SQLite (WAL) │ │    │ │ getjob 服务 (Java/Spring Boot)     │ │
-│ │ boss_agent.db│ │    │ │ http://localhost:8888               │ │
-│ └──────────────┘ │    │ │ 猎聘/Boss 岗位爬取 + 投递           │ │
-│                  │    │ └─────────────────────────────────────┘ │
+│ │ SQLite (WAL) │ │    │ │ Playwright 浏览器自动化              │ │
+│ │ boss_agent.db│ │    │ │ 猎聘岗位爬取 + JD 获取 + 投递        │ │
+│ └──────────────┘ │    │ └─────────────────────────────────────┘ │
 │ ┌──────────────┐ │    │                                         │
 │ │ 记忆文件系统  │ │    │ ┌─────────────────────────────────────┐ │
 │ │ data/记忆画像/│ │    │ │ LLM API (OpenAI 兼容)              │ │
@@ -131,7 +130,7 @@ on_chat_start()
   ├── 5. bootstrap(db, api_key, model, base_url)
   │      ├── create_tool_registry() — 注册 30+ Tool
   │      ├── LLMClient(api_key, model, base_url)
-  │      ├── GetjobClient(base_url)
+  │      ├── LiepinBrowser() — Playwright 浏览器自动化
   │      ├── JobVectorIndex().load()
   │      ├── Planner(registry, llm_client)
   │      ├── Executor(registry, llm_client)
@@ -308,7 +307,6 @@ Skills 是场景参考规范，为 AI 提供特定场景下的上下文和执行
 
 | 文件 | 职责 |
 |------|------|
-| `getjob_client.py` | getjob 服务 HTTP 客户端，封装所有 REST API 调用 |
 | `task_monitor.py` | 后台任务监控 + 通知队列，轮询爬取任务状态，完成时通知 Agent |
 | `task_state.py` | 全局任务状态存储，供前端任务面板读取 |
 
@@ -458,7 +456,6 @@ OfferBot (Python)  ←HTTP→  getjob 服务 (Java, port 8888)
 - `DASHSCOPE_API_KEY` — LLM API Key
 - `API_BASE_URL` — LLM API 地址
 - `DASHSCOPE_LLM_MODEL` — 模型名 (默认 qwen3.6-plus)
-- `GETJOB_BASE_URL` — getjob 服务地址 (默认 localhost:8888)
 - `DB_PATH` — SQLite 数据库路径
 - `MEMORY_DIR` — 记忆文件目录
 

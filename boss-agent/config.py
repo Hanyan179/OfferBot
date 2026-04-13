@@ -75,9 +75,6 @@ class Config:
     web_search_default_results: int = 10
     web_search_api_key: str = ""
 
-    # --- Getjob 服务 ---
-    getjob_base_url: str = "http://localhost:8888"
-
     # --- 测试 API ---
     enable_test_api: bool = True
 
@@ -145,8 +142,6 @@ def load_config() -> Config:
         web_fetch_cache_ttl=_env_int("WEB_FETCH_CACHE_TTL", defaults.web_fetch_cache_ttl),
         web_search_default_results=_env_int("WEB_SEARCH_DEFAULT_RESULTS", defaults.web_search_default_results),
         web_search_api_key=_env("WEB_SEARCH_API_KEY", defaults.web_search_api_key),
-        # Getjob 服务
-        getjob_base_url=_env("GETJOB_BASE_URL", defaults.getjob_base_url),
         # 测试 API
         enable_test_api=_env("ENABLE_TEST_API", "true").lower() in ("true", "1", "yes"),
     )

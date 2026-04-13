@@ -83,7 +83,7 @@ class Tool(ABC):
         """声明 execute() 需要的 context 字段列表。
 
         例如 ["db"] 表示需要 context["db"]，
-        ["db", "getjob_client"] 表示需要两个依赖。
+        ["db", "browser"] 表示需要两个依赖。
         默认返回空列表。
         """
         return []

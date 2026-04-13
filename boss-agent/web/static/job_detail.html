@@ -107,6 +107,18 @@ html.dark .dim-bar { background:rgba(255,255,255,0.06); }
 .ai-text { font-size:13px; line-height:1.7; color:#444; }
 html.dark .ai-text { color:#bbb; }
 .ai-text li { margin-bottom:4px; }
+
+/* 打招呼结果 */
+.greeting-card { background:rgba(107,203,119,0.06); border:1px solid rgba(107,203,119,0.2); border-radius:12px; padding:16px; }
+html.dark .greeting-card { background:rgba(107,203,119,0.08); border-color:rgba(107,203,119,0.15); }
+.greeting-card-title { font-size:13px; font-weight:600; margin-bottom:10px; color:#6BCB77; }
+.greeting-text { font-size:14px; line-height:1.8; color:#333; white-space:pre-wrap; user-select:all; }
+html.dark .greeting-text { color:#ddd; }
+.greeting-actions { display:flex; gap:8px; margin-top:12px; }
+.btn-copy { padding:6px 16px; border-radius:8px; font-size:12px; font-weight:500; border:1px solid rgba(107,203,119,0.3); background:rgba(107,203,119,0.1); color:#6BCB77; cursor:pointer; transition:all .2s; }
+.btn-copy:hover { background:rgba(107,203,119,0.2); }
+.btn-regen { padding:6px 16px; border-radius:8px; font-size:12px; font-weight:500; border:1px solid rgba(0,0,0,0.1); background:transparent; color:#888; cursor:pointer; transition:all .2s; }
+.btn-regen:hover { background:rgba(0,0,0,0.04); }
 </style>
 </head>
 <body>
@@ -125,9 +137,12 @@ html.dark .ai-text { color:#bbb; }
     </div>
     <div class="actions">
       <button class="btn btn-ai" id="btnAction" onclick="handleAction()">🤖 AI 深度分析</button>
+      <button class="btn btn-ai" id="btnGreeting" onclick="generateGreeting()" style="display:none;background:rgba(107,203,119,0.12);color:#6BCB77;border-color:rgba(107,203,119,0.2);">💬 AI 打招呼</button>
+      <button class="btn btn-ai" id="btnSend" onclick="sendGreeting()" style="display:none;background:rgba(255,149,0,0.12);color:#FF9500;border-color:rgba(255,149,0,0.2);">🚀 自动发送</button>
       <a class="btn btn-link" id="btnUrl" href="#" target="_blank">🔗 查看猎聘详情</a>
     </div>
     <div class="ai-result" id="aiResult"></div>
+    <div class="greeting-result" id="greetingResult" style="display:none;margin-bottom:24px;"></div>
     <div class="section">
       <div class="section-title">基本信息</div>
       <div class="info-grid" id="jInfo"></div>
@@ -210,6 +225,8 @@ function render() {
       el.className = 'ai-result visible';
       renderAnalysis(saved);
       document.getElementById('btnAction').textContent = '🤖 重新分析';
+      document.getElementById('btnGreeting').style.display = '';
+      document.getElementById('btnSend').style.display = '';
     } catch(e) {}
   }
 }
@@ -262,19 +279,14 @@ async function runAI() {
   const el = document.getElementById('aiResult');
   btn.disabled = true; btn.textContent = '⏳ 分析中...';
   el.className = 'ai-result visible';
-  el.innerHTML = '<div class="ai-loading">AI 正在进行多维匹配分析...<br><span style="font-size:11px;color:#999;">通常需要 15-30 秒，请耐心等待</span></div>';
+  el.innerHTML = '<div class="ai-loading">AI 正在进行多维匹配分析...<br><span style="font-size:11px;color:#999;">可能需要 30-60 秒，请耐心等待</span></div>';
 
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 120000);
-
     const resp = await fetch(`${API}/api/jobs/${jobId}/analysis`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: '{}',
-      signal: controller.signal,
     });
-    clearTimeout(timeout);
 
     const data = await resp.json();
     if (!data.ok) {
@@ -287,12 +299,11 @@ async function runAI() {
     // 更新本地数据
     jobData.match_detail = JSON.stringify(data.analysis);
     jobData.match_score = data.analysis.overall_score;
+    // 显示打招呼按钮
+    document.getElementById('btnGreeting').style.display = '';
+    document.getElementById('btnSend').style.display = '';
   } catch(e) {
-    if (e.name === 'AbortError') {
-      el.innerHTML = '<div class="ai-error">分析超时（超过 2 分钟），请重试</div>';
-    } else {
-      el.innerHTML = `<div class="ai-error">分析失败: ${esc(e.message)}</div>`;
-    }
+    el.innerHTML = `<div class="ai-error">分析失败: ${esc(e.message)}</div>`;
   }
   btn.disabled = false; btn.textContent = '🤖 重新分析';
 }
@@ -393,6 +404,95 @@ function renderAnalysis(a) {
 }
 
 function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+async function generateGreeting() {
+  const btn = document.getElementById('btnGreeting');
+  const el = document.getElementById('greetingResult');
+  btn.disabled = true; btn.textContent = '⏳ 生成中...';
+  el.style.display = 'block';
+  el.innerHTML = '<div class="ai-loading">AI 正在生成个性化打招呼语...</div>';
+
+  try {
+    const resp = await fetch(`${API}/api/jobs/${jobId}/greeting`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: '{}',
+    });
+    const data = await resp.json();
+    if (!data.ok) {
+      el.innerHTML = `<div class="ai-error">生成失败: ${esc(data.error || '未知错误')}</div>`;
+      btn.disabled = false; btn.textContent = '💬 AI 打招呼';
+      return;
+    }
+
+    el.innerHTML = `<div class="greeting-card">
+      <div class="greeting-card-title">💬 个性化打招呼语</div>
+      <div class="greeting-text" id="greetingText">${esc(data.greeting)}</div>
+      <div class="greeting-actions">
+        <button class="btn-copy" onclick="copyGreeting()">📋 复制</button>
+        <button class="btn-regen" onclick="generateGreeting()">🔄 重新生成</button>
+      </div>
+    </div>`;
+  } catch(e) {
+    el.innerHTML = `<div class="ai-error">生成失败: ${esc(e.message)}</div>`;
+  }
+  btn.disabled = false; btn.textContent = '💬 AI 打招呼';
+}
+
+function copyGreeting() {
+  const text = document.getElementById('greetingText')?.textContent || '';
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.querySelector('.btn-copy');
+    if (btn) { btn.textContent = '✅ 已复制'; setTimeout(() => { btn.textContent = '📋 复制'; }, 1500); }
+  });
+}
+
+async function sendGreeting() {
+  const btn = document.getElementById('btnSend');
+  const el = document.getElementById('greetingResult');
+  btn.disabled = true; btn.textContent = '🚀 发送中...';
+  el.style.display = 'block';
+
+  // 如果已经生成了打招呼语，用现有的；否则让后端自动生成
+  const existingText = document.getElementById('greetingText')?.textContent || '';
+  const body = existingText ? {greeting: existingText} : {};
+
+  el.innerHTML = '<div class="ai-loading">正在自动发送打招呼...<br><span style="font-size:11px;color:#999;">会打开浏览器操作猎聘，请稍候</span></div>';
+
+  try {
+    const resp = await fetch(`${API}/api/jobs/${jobId}/send-greeting`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    });
+    const data = await resp.json();
+
+    if (data.ok && data.sent) {
+      el.innerHTML = `<div class="greeting-card" style="border-color:rgba(107,203,119,0.4);">
+        <div class="greeting-card-title" style="color:#6BCB77;">✅ 打招呼已发送</div>
+        <div class="greeting-text">${esc(data.greeting)}</div>
+      </div>`;
+      btn.textContent = '✅ 已发送';
+    } else if (data.greeting) {
+      el.innerHTML = `<div class="greeting-card">
+        <div class="greeting-card-title" style="color:#FF9500;">⚠️ 自动发送失败，打招呼语已生成</div>
+        <div class="greeting-text" id="greetingText">${esc(data.greeting)}</div>
+        <div style="font-size:12px;color:#999;margin-top:8px;">${esc(data.error || '')}</div>
+        <div class="greeting-actions">
+          <button class="btn-copy" onclick="copyGreeting()">📋 复制手动发送</button>
+          <button class="btn-regen" onclick="sendGreeting()">🔄 重试发送</button>
+        </div>
+      </div>`;
+      btn.disabled = false; btn.textContent = '🚀 重试发送';
+    } else {
+      el.innerHTML = `<div class="ai-error">发送失败: ${esc(data.error || '未知错误')}</div>`;
+      btn.disabled = false; btn.textContent = '🚀 自动发送';
+    }
+  } catch(e) {
+    el.innerHTML = `<div class="ai-error">发送失败: ${esc(e.message)}</div>`;
+    btn.disabled = false; btn.textContent = '🚀 自动发送';
+  }
+}
 
 // 主题跟随
 window.addEventListener('message', (e) => {
