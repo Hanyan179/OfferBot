@@ -132,15 +132,27 @@ MooBot 执行：
 ## 快速开始
 
 ```bash
+# 1. 克隆项目
 git clone https://github.com/Hanyan179/OfferBot.git
 cd OfferBot
 
-python -m venv .venv
+# 2. 创建虚拟环境
+python3 -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
+
+# 3. 安装 Chainlit Fork（定制版 UI，必须先装）
+git clone https://github.com/Hanyan179/chainlit.git chainlit-fork
+cd chainlit-fork && git checkout custom-dev && cd ..
+pip install -e chainlit-fork/backend
+# 链接前端资源（chainlit-fork/frontend/dist 缺少 assets 目录）
+ln -s ../../backend/chainlit/frontend/dist/assets chainlit-fork/frontend/dist/assets
+
+# 4. 安装项目依赖
 pip install -r boss-agent/requirements.txt
 
+# 5. 启动
 cd boss-agent
-python -m uvicorn web.app:app --host 0.0.0.0 --port 7860
+python3 -m uvicorn web.app:app --host 0.0.0.0 --port 7860
 ```
 
 打开 http://localhost:7860，在设置页面配置 API Key，开始对话。
@@ -183,7 +195,7 @@ export DASHSCOPE_LLM_MODEL="gemini-2.0-flash"
 | `save_job` | 保存岗位数据 |
 | `save_application` | 记录投递 |
 | `get_stats` | 投递统计 |
-| `add_to_blacklist` / `remove_from_blacklist` | 黑名单管理 |
+| `get_task_status` | 查询当天任务面板进度 |
 | `export_csv` | 导出 CSV |
 
 ### 开发中

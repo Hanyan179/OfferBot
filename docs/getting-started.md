@@ -11,9 +11,16 @@
 git clone https://github.com/Hanyan179/OfferBot.git
 cd OfferBot
 
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 
+# 安装 Chainlit Fork（定制版 UI，必须先装）
+git clone https://github.com/Hanyan179/chainlit.git chainlit-fork
+cd chainlit-fork && git checkout custom-dev && cd ..
+pip install -e chainlit-fork/backend
+ln -s ../../backend/chainlit/frontend/dist/assets chainlit-fork/frontend/dist/assets
+
+# 安装项目依赖
 pip install -r boss-agent/requirements.txt
 ```
 
@@ -35,7 +42,7 @@ export DASHSCOPE_API_KEY="your-api-key"
 
 ```bash
 cd boss-agent
-python -m uvicorn web.app:app --host 0.0.0.0 --port 7860
+python3 -m uvicorn web.app:app --host 0.0.0.0 --port 7860
 ```
 
 打开 [http://localhost:7860](http://localhost:7860)，开始对话。
